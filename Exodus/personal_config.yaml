@@ -1,0 +1,3 @@
+﻿registry:
+  HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\HideFileExt:
+    set: 0
