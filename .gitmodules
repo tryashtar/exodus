@@ -1,0 +1,3 @@
+[submodule "utils.utility"]
+	path = utils.utility
+	url = https://github.com/tryashtar/utils.utility

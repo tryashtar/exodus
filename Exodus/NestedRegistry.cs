@@ -11,7 +11,6 @@ public class NestedRegistry : IYamlConvertible
     public readonly RegistryKey Key;
     public readonly Lazy<NestedRegistry?> Parent;
     public readonly string Name;
-    public readonly string Value;
     public readonly Lazy<ReadOnlyDictionary<string, NestedRegistry>> Subkeys;
     public readonly Lazy<ReadOnlyDictionary<string, string>> Values;
     public NestedRegistry[] Path
@@ -69,11 +68,6 @@ public class NestedRegistry : IYamlConvertible
     public void Write(IEmitter emitter, ObjectSerializer nestedObjectSerializer)
     {
         emitter.Emit(new MappingStart());
-        if (Value != null)
-        {
-            emitter.Emit(new Scalar("(Default)"));
-            emitter.Emit(new Scalar(Value));
-        }
         if (Values.Value.Count > 0)
         {
             foreach (var (name, value) in Values.Value.OrderBy(x => x.Key))

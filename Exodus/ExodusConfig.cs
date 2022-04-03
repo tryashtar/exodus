@@ -6,17 +6,37 @@ using YamlDotNet.Serialization;
 
 namespace Exodus;
 
-public class ExodusConfig : IYamlConvertible
+public class ExodusConfig : IYamlParseable<ExodusConfig>
 {
-    public void Read(IParser parser, Type expectedType, ObjectDeserializer nestedObjectDeserializer)
+    public readonly RegistryConfig Registry;
+    public static ExodusConfig Parse(IYamlContext context)
     {
-        parser.Consume<MappingStart>();
-        
-        parser.Consume<MappingEnd>();
+        return new(context.Parse<RegistryConfig>("registry"));
     }
-
-    public void Write(IEmitter emitter, ObjectSerializer nestedObjectSerializer)
+    private ExodusConfig(RegistryConfig registry)
     {
-        throw new NotImplementedException();
+        Registry = registry;
     }
 }
+
+public interface IYamlParseable<T> where T : IYamlParseable<T>
+{
+    public static abstract T Parse(IYamlContext context);
+}
+
+public interface IYamlContext
+{
+    public T Parse<T>(string child) where T : IYamlParseable<T>
+    {
+        return T.Parse()
+    }
+}
+
+public class RegistryConfig : IYamlParseable<RegistryConfig>
+{
+    public static RegistryConfig Parse()
+    {
+
+    }
+}
+
