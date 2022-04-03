@@ -6,13 +6,13 @@ using YamlDotNet.Serialization;
 
 namespace Exodus;
 
-[YamlHelper.OptionalFields]
+[YamlParser.OptionalFields]
 public class ExportSettings
 {
     public readonly RegistryExport Registry;
 }
 
-[YamlHelper.OptionalFields]
+[YamlParser.OptionalFields]
 public class RegistryExport
 {
     public readonly RegistryAssignments Set;
@@ -22,30 +22,47 @@ public class RegistryExport
 
 public class RegistryAssignments
 {
-    [YamlHelper.Root]
+    [YamlParser.Root]
     private readonly Dictionary<RegistryPath, RegistryValue> Assignments;
 }
 
 public class RegistryCopies
 {
-    [YamlHelper.Root]
-    private readonly Dictionary<RegistryPath, RegistryPath> Copies;
+    [YamlParser.Root]
+    private readonly HashSet<RegistryPath> Copies;
 }
 
 public class RegistryDeletions
 {
-    [YamlHelper.Root]
+    [YamlParser.Root]
     private readonly HashSet<RegistryPath> Delete;
-}
-
-public class RegistryPath
-{
-    [YamlHelper.Root]
-    private string Path;
 }
 
 public class RegistryValue
 {
-    [YamlHelper.Root]
+    [YamlParser.Root]
     private string Value;
+}
+
+public class RegistryPath
+{
+    private RegistryHive TopLevel;
+    private string PathRemainder;
+    private static readonly char[] Slashes = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+    [YamlParser.Parser]
+    private void Parse(string val)
+    {
+        int index = val.IndexOfAny(Slashes);
+        string start = val[..index];
+        TopLevel = start switch
+        {
+            "HKEY_CLASSES_ROOT" => RegistryHive.ClassesRoot,
+            "HKEY_CURRENT_USER" => RegistryHive.CurrentUser,
+            "HKEY_LOCAL_MACHINE" => RegistryHive.LocalMachine,
+            "HKEY_USERS" => RegistryHive.Users,
+            "HKEY_CURRENT_CONFIG" => RegistryHive.CurrentConfig,
+            _ => throw new ArgumentException($"Couldn't parse registry path {val}")
+        };
+        PathRemainder = val[(index + 1)..];
+    }
 }

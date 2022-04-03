@@ -1,7 +1,6 @@
 ﻿using Exodus;
-using Microsoft.Win32;
 using TryashtarUtils.Utility;
 
-var node = TryashtarUtils.Utility.YamlHelper.ParseFile("config.yaml");
-var settings = Exodus.YamlHelper.Parse<ExportSettings>(node);
+var node = YamlHelper.ParseFile("config.yaml");
+var settings = YamlParser.Parse<ExportSettings>(node);
 Console.WriteLine();

@@ -10,7 +10,7 @@ using YamlDotNet.Serialization;
 
 namespace Exodus;
 
-public static class YamlHelper
+public static class YamlParser
 {
     public static T Parse<T>(YamlNode node)
     {
@@ -48,24 +48,41 @@ public static class YamlHelper
         if (root != null)
         {
             root.SetValue(result, Parse(node, root.FieldType));
+            return result;
         }
-        else
+        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var parser = FindParserMethod(methods);
+        if (parser != null)
         {
-            var map = (YamlMappingNode)node;
-            var unused_nodes = map.Children.Keys.ToHashSet();
-            foreach (var field in fields.Where(x => x.IsPublic))
-            {
-                string name = GetNameFromField(field);
-                var subnode = map.TryGet(name);
-                if (subnode == null && !IsOptional(type, field))
-                    throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
-                field.SetValue(result, Parse(subnode, field.FieldType));
-                unused_nodes.Remove(name);
-            }
-            if (unused_nodes.Count > 0)
-                throw new InvalidDataException($"While parsing {type.Name}, found unused nodes: {String.Join(", ", unused_nodes)}");
+            var param_type = parser.GetParameters()[0].ParameterType;
+            parser.Invoke(result, new[] { Parse(node, param_type) });
+            return result;
         }
+        var map = (YamlMappingNode)node;
+        var unused_nodes = map.Children.Keys.ToHashSet();
+        foreach (var field in fields.Where(x => x.IsPublic))
+        {
+            string name = GetNameFromField(field);
+            var subnode = map.TryGet(name);
+            if (subnode == null && !IsOptional(type, field))
+                throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
+            field.SetValue(result, Parse(subnode, field.FieldType));
+            unused_nodes.Remove(name);
+        }
+        if (unused_nodes.Count > 0)
+            throw new InvalidDataException($"While parsing {type.Name}, found unused nodes: {String.Join(", ", unused_nodes)}");
         return result;
+    }
+
+    private static MethodInfo FindParserMethod(MethodInfo[] methods)
+    {
+        foreach (var method in methods)
+        {
+            var att = method.GetCustomAttribute<ParserAttribute>();
+            if (att != null)
+                return method;
+        }
+        return null;
     }
 
     private static FieldInfo FindRootField(FieldInfo[] fields)
@@ -96,4 +113,6 @@ public static class YamlHelper
     public class OptionalFieldsAttribute : Attribute { }
     [AttributeUsage(AttributeTargets.Field)]
     public class RootAttribute : Attribute { }
+    [AttributeUsage(AttributeTargets.Method)]
+    public class ParserAttribute : Attribute { }
 }
