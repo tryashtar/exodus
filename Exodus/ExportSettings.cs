@@ -6,12 +6,14 @@ using YamlDotNet.Serialization;
 
 namespace Exodus;
 
+[YamlHelper.OptionalFields]
 public class ExportSettings
 {
-    public readonly Registry Registry;
+    public readonly RegistryExport Registry;
 }
 
-public class Registry
+[YamlHelper.OptionalFields]
+public class RegistryExport
 {
     public readonly RegistryAssignments Set;
     public readonly RegistryCopies Copy;
@@ -20,15 +22,30 @@ public class Registry
 
 public class RegistryAssignments
 {
+    [YamlHelper.Root]
     private readonly Dictionary<RegistryPath, RegistryValue> Assignments;
+}
+
+public class RegistryCopies
+{
+    [YamlHelper.Root]
+    private readonly Dictionary<RegistryPath, RegistryPath> Copies;
+}
+
+public class RegistryDeletions
+{
+    [YamlHelper.Root]
+    private readonly HashSet<RegistryPath> Delete;
 }
 
 public class RegistryPath
 {
-
+    [YamlHelper.Root]
+    private string Path;
 }
 
 public class RegistryValue
 {
-
+    [YamlHelper.Root]
+    private string Value;
 }
