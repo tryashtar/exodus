@@ -64,8 +64,12 @@ public static class YamlParser
         {
             string name = GetNameFromField(field);
             var subnode = map.TryGet(name);
-            if (subnode == null && !IsOptional(type, field))
-                throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
+            if (subnode == null)
+            {
+                if (!IsOptional(type, field))
+                    throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
+                continue;
+            }
             field.SetValue(result, Parse(subnode, field.FieldType));
             unused_nodes.Remove(name);
         }

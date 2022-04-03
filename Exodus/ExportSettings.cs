@@ -10,32 +10,29 @@ namespace Exodus;
 public class ExportSettings
 {
     public readonly RegistryExport Registry;
+    public readonly WingetExport Winget;
+    public readonly FilesExport Files;
 }
 
 [YamlParser.OptionalFields]
 public class RegistryExport
 {
-    public readonly RegistryAssignments Set;
-    public readonly RegistryCopies Copy;
-    public readonly RegistryDeletions Delete;
+    public readonly Dictionary<RegistryPath, RegistryValue> Set;
+    public readonly HashSet<RegistryPath> Copy;
+    public readonly HashSet<RegistryPath> Delete;
 }
 
-public class RegistryAssignments
+[YamlParser.OptionalFields]
+public class WingetExport
 {
-    [YamlParser.Root]
-    private readonly Dictionary<RegistryPath, RegistryValue> Assignments;
+    public readonly HashSet<string> Install;
+    public readonly HashSet<string> Uninstall;
 }
 
-public class RegistryCopies
+public class FilesExport
 {
-    [YamlParser.Root]
-    private readonly HashSet<RegistryPath> Copies;
-}
-
-public class RegistryDeletions
-{
-    [YamlParser.Root]
-    private readonly HashSet<RegistryPath> Delete;
+    public readonly HashSet<string> Copy;
+    public readonly HashSet<string> Delete;
 }
 
 public class RegistryValue
@@ -64,5 +61,10 @@ public class RegistryPath
             _ => throw new ArgumentException($"Couldn't parse registry path {val}")
         };
         PathRemainder = val[(index + 1)..];
+    }
+
+    public override int GetHashCode()
+    {
+        return (TopLevel, PathRemainder).GetHashCode();
     }
 }
