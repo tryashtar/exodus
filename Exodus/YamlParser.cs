@@ -21,6 +21,13 @@ public static class YamlParser
     {
         if (type == typeof(string))
             return ((YamlScalarNode)node).Value;
+        var binding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var constructor = WithAttribute<ConstructorInfo, ParserAttribute>(type.GetConstructors(binding));
+        if (constructor != null)
+        {
+            var param_type = constructor.GetParameters()[0].ParameterType;
+            return constructor.Invoke(new[] { Parse(node, param_type) });
+        }
         var result = Activator.CreateInstance(type);
         if (result is IDictionary dict)
         {
@@ -43,15 +50,15 @@ public static class YamlParser
             }
             return list;
         }
-        var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        var root = FindRootField(fields);
+        var fields = type.GetFields(binding);
+        var root = WithAttribute<FieldInfo, RootAttribute>(fields);
         if (root != null)
         {
             root.SetValue(result, Parse(node, root.FieldType));
             return result;
         }
-        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        var parser = FindParserMethod(methods);
+        var methods = type.GetMethods(binding);
+        var parser = WithAttribute<MethodInfo, ParserAttribute>(methods);
         if (parser != null)
         {
             var param_type = parser.GetParameters()[0].ParameterType;
@@ -78,24 +85,13 @@ public static class YamlParser
         return result;
     }
 
-    private static MethodInfo FindParserMethod(MethodInfo[] methods)
+    private static T WithAttribute<T, U>(T[] members) where T : MemberInfo where U : Attribute
     {
-        foreach (var method in methods)
+        foreach (var member in members)
         {
-            var att = method.GetCustomAttribute<ParserAttribute>();
+            var att = member.GetCustomAttribute<U>();
             if (att != null)
-                return method;
-        }
-        return null;
-    }
-
-    private static FieldInfo FindRootField(FieldInfo[] fields)
-    {
-        foreach (var field in fields)
-        {
-            var att = field.GetCustomAttribute<RootAttribute>();
-            if (att != null)
-                return field;
+                return member;
         }
         return null;
     }
@@ -117,6 +113,6 @@ public static class YamlParser
     public class OptionalFieldsAttribute : Attribute { }
     [AttributeUsage(AttributeTargets.Field)]
     public class RootAttribute : Attribute { }
-    [AttributeUsage(AttributeTargets.Method)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]
     public class ParserAttribute : Attribute { }
 }

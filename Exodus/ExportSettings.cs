@@ -1,5 +1,6 @@
 ﻿using Microsoft.Win32;
 using System.Collections.ObjectModel;
+using TryashtarUtils.Utility;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
@@ -43,11 +44,11 @@ public class RegistryValue
 
 public class RegistryPath
 {
-    private RegistryHive TopLevel;
-    private string PathRemainder;
+    private readonly RegistryHive TopLevel;
+    private readonly string PathRemainder;
     private static readonly char[] Slashes = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
     [YamlParser.Parser]
-    private void Parse(string val)
+    private RegistryPath(string val)
     {
         int index = val.IndexOfAny(Slashes);
         string start = val[..index];
