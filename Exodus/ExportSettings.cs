@@ -52,9 +52,10 @@ public class WingetExport
     public readonly HashSet<string> Copy;
     public void Finalize()
     {
+        var packages = WingetWrapper.InstalledPackages().ToHashSet();
         foreach (var item in Copy)
         {
-            if (WingetWrapper.IsInstalled(item))
+            if (packages.Contains(item))
                 Install.Add(item);
             else
                 Uninstall.Add(item);
