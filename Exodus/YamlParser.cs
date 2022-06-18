@@ -49,21 +49,16 @@ public static class YamlParser
         }
         var binding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var fields = type.GetFields(binding);
+        var root = WithAttribute<FieldInfo, RootAttribute>(fields);
+        if (root != null)
+            return Serialize(root.GetValue(obj), root.FieldType);
         var serializer_field = WithAttribute<FieldInfo, SerializerAttribute>(fields);
         if (serializer_field != null)
-        {
-            var field_type = serializer_field.FieldType;
-            var serialized = serializer_field.GetValue(obj);
-            return Serialize(serialized, field_type);
-        }
+            return Serialize(serializer_field.GetValue(obj), serializer_field.FieldType);
         var methods = type.GetMethods(binding);
         var serializer_method = WithAttribute<MethodInfo, SerializerAttribute>(methods);
         if (serializer_method != null)
-        {
-            var return_type = serializer_method.ReturnType;
-            var serialized = serializer_method.Invoke(obj, null);
-            return Serialize(serialized, return_type);
-        }
+            return Serialize(serializer_method.Invoke(obj, null), serializer_method.ReturnType);
         var result = new YamlMappingNode();
         foreach (var field in fields)
         {

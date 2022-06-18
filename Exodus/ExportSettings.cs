@@ -52,19 +52,29 @@ public class WingetExport
     public readonly HashSet<string> Copy;
     public void Finalize()
     {
-        var packages = WingetWrapper.InstalledPackages().ToHashSet();
-        foreach (var item in Copy)
+        if (Copy.Count > 0)
         {
-            if (packages.Contains(item))
-                Install.Add(item);
-            else
-                Uninstall.Add(item);
+            var packages = WingetWrapper.InstalledPackages().ToHashSet();
+            foreach (var item in Copy)
+            {
+                if (packages.Contains(item))
+                    Install.Add(item);
+                else
+                    Uninstall.Add(item);
+            }
+            Copy.Clear();
         }
-        Copy.Clear();
     }
     public void Perform()
     {
-
+        foreach (var item in Install)
+        {
+            WingetWrapper.Install(item);
+        }
+        foreach (var item in Uninstall)
+        {
+            WingetWrapper.Uninstall(item);
+        }
     }
 }
 
@@ -77,7 +87,6 @@ public class FilesExport
 public class RegistryValue
 {
     [YamlParser.Root]
-    [YamlParser.Serializer]
     private readonly string Value;
     public RegistryValue(string val)
     {

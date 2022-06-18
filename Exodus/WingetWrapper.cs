@@ -29,4 +29,14 @@ public static class WingetWrapper
             }
         }
     }
+
+    public static void Install(string name)
+    {
+        var result = new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"install \"{name}\"").Result;
+    }
+
+    public static void Uninstall(string name)
+    {
+        var result = new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"uninstall \"{name}\"").Result;
+    }
 }
