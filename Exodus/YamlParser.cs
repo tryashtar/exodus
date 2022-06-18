@@ -17,6 +17,56 @@ public static class YamlParser
         return (T)Parse(node, typeof(T));
     }
 
+    public static YamlNode Serialize<T>(T item)
+    {
+        return Serialize(item, typeof(T));
+    }
+
+    private static YamlNode Serialize(object obj, Type type)
+    {
+        if (type == typeof(string))
+            return new YamlScalarNode((string)obj);
+        if (typeof(IDictionary).IsAssignableFrom(type))
+        {
+            var node = new YamlMappingNode();
+            var dict = (IDictionary)obj;
+            foreach (var key in dict.Keys)
+            {
+                var value = dict[key];
+                node.Add(Serialize(key, key.GetType()), Serialize(value, value.GetType()));
+            }
+            return node;
+        }
+        if (typeof(IEnumerable).IsAssignableFrom(type))
+        {
+            var node = new YamlSequenceNode();
+            var list = (IEnumerable)obj;
+            foreach (var item in list)
+            {
+                node.Add(Serialize(item, item.GetType()));
+            }
+            return node;
+        }
+        var binding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var methods = type.GetMethods(binding);
+        var serializer = WithAttribute<MethodInfo, SerializerAttribute>(methods);
+        if (serializer != null)
+        {
+            var return_type = serializer.ReturnType;
+            var serialized = serializer.Invoke(obj, null);
+            return Serialize(serialized, return_type);
+        }
+        var fields = type.GetFields(binding);
+        var result = new YamlMappingNode();
+        foreach (var field in fields)
+        {
+            var val = field.GetValue(obj);
+            if (val != null)
+                result.Add(GetNameFromField(field), Serialize(val, field.FieldType));
+        }
+        return result;
+    }
+
     private static object Parse(YamlNode node, Type type)
     {
         if (type == typeof(string))
@@ -115,4 +165,6 @@ public static class YamlParser
     public class RootAttribute : Attribute { }
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]
     public class ParserAttribute : Attribute { }
+    [AttributeUsage(AttributeTargets.Method)]
+    public class SerializerAttribute : Attribute { }
 }

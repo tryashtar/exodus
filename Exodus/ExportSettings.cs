@@ -13,6 +13,10 @@ public class ExportSettings
     public readonly RegistryExport Registry;
     public readonly WingetExport Winget;
     public readonly FilesExport Files;
+    public void CreateExport(string folder)
+    {
+
+    }
 }
 
 [YamlParser.OptionalFields]
@@ -39,7 +43,7 @@ public class FilesExport
 public class RegistryValue
 {
     [YamlParser.Root]
-    private string Value;
+    private readonly string Value;
 }
 
 public class RegistryPath
@@ -62,6 +66,21 @@ public class RegistryPath
             _ => throw new ArgumentException($"Couldn't parse registry path {val}")
         };
         PathRemainder = val[(index + 1)..];
+    }
+
+    [YamlParser.Serializer]
+    public override string ToString()
+    {
+        string start = TopLevel switch
+        {
+            RegistryHive.ClassesRoot => "HKEY_CLASSES_ROOT",
+            RegistryHive.CurrentUser => "HKEY_CURRENT_USER",
+            RegistryHive.LocalMachine => "HKEY_LOCAL_MACHINE",
+            RegistryHive.Users => "HKEY_USERS",
+            RegistryHive.CurrentConfig => "HKEY_CURRENT_CONFIG",
+            _ => throw new ArgumentException($"Couldn't parse registry path {TopLevel}")
+        };
+        return start + Slashes[0] + PathRemainder;
     }
 
     public override int GetHashCode()
