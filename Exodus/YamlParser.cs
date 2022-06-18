@@ -48,15 +48,22 @@ public static class YamlParser
             return node;
         }
         var binding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        var methods = type.GetMethods(binding);
-        var serializer = WithAttribute<MethodInfo, SerializerAttribute>(methods);
-        if (serializer != null)
+        var fields = type.GetFields(binding);
+        var serializer_field = WithAttribute<FieldInfo, SerializerAttribute>(fields);
+        if (serializer_field != null)
         {
-            var return_type = serializer.ReturnType;
-            var serialized = serializer.Invoke(obj, null);
+            var field_type = serializer_field.FieldType;
+            var serialized = serializer_field.GetValue(obj);
+            return Serialize(serialized, field_type);
+        }
+        var methods = type.GetMethods(binding);
+        var serializer_method = WithAttribute<MethodInfo, SerializerAttribute>(methods);
+        if (serializer_method != null)
+        {
+            var return_type = serializer_method.ReturnType;
+            var serialized = serializer_method.Invoke(obj, null);
             return Serialize(serialized, return_type);
         }
-        var fields = type.GetFields(binding);
         var result = new YamlMappingNode();
         foreach (var field in fields)
         {
@@ -117,14 +124,17 @@ public static class YamlParser
         }
         var map = (YamlMappingNode)node;
         var unused_nodes = map.Children.Keys.ToHashSet();
+        var optional = type.GetCustomAttribute<OptionalFieldsAttribute>();
         foreach (var field in fields.Where(x => x.IsPublic))
         {
             string name = GetNameFromField(field);
             var subnode = map.TryGet(name);
             if (subnode == null)
             {
-                if (!IsOptional(type, field))
+                if (optional == null)
                     throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
+                if (optional.InitializeWhenNull)
+                    field.SetValue(result, Activator.CreateInstance(field.FieldType));
                 continue;
             }
             field.SetValue(result, Parse(subnode, field.FieldType));
@@ -146,25 +156,24 @@ public static class YamlParser
         return null;
     }
 
-    private static bool IsOptional(Type type, FieldInfo field)
-    {
-        var att = type.GetCustomAttribute<OptionalFieldsAttribute>();
-        if (att != null)
-            return true;
-        return false;
-    }
-
     private static string GetNameFromField(FieldInfo field)
     {
         return StringUtils.PascalToSnake(field.Name);
     }
 
     [AttributeUsage(AttributeTargets.Class)]
-    public class OptionalFieldsAttribute : Attribute { }
+    public class OptionalFieldsAttribute : Attribute
+    {
+        public readonly bool InitializeWhenNull;
+        public OptionalFieldsAttribute(bool init_nulls = false)
+        {
+            InitializeWhenNull = init_nulls;
+        }
+    }
     [AttributeUsage(AttributeTargets.Field)]
     public class RootAttribute : Attribute { }
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]
     public class ParserAttribute : Attribute { }
-    [AttributeUsage(AttributeTargets.Method)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field)]
     public class SerializerAttribute : Attribute { }
 }
