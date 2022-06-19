@@ -41,16 +41,36 @@ public class RegistryExport
         Console.WriteLine("Finalizing registry...");
         foreach (var item in Copy)
         {
-            if (item.Exists())
-                Set[item] = item.Get();
-            else
-                Delete.Add(item);
+            FinalizeSingle(item);
         }
         Copy.Clear();
     }
+    private void FinalizeSingle(RegistryPath item)
+    {
+        var val = item.GetAsValue();
+        var key = item.GetAsKey();
+        if (val != null)
+            Set[item] = val;
+        if (key != null)
+        {
+            foreach (var sub in key.GetValueNames())
+            {
+                FinalizeSingle(item.Append(sub));
+            }
+            foreach (var sub in key.GetSubKeyNames())
+            {
+                FinalizeSingle(item.Append(sub));
+            }
+        }
+        if (val == null && key == null)
+            Delete.Add(item);
+    }
     public void Perform()
     {
-
+        foreach (var item in Delete)
+        {
+            item.Delete();
+        }
     }
 }
 
@@ -165,7 +185,7 @@ public class RegistryPath
     private readonly string Key;
     private static readonly char[] Slashes = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
 
-    public RegistryValue? Get()
+    public RegistryValue? GetAsValue()
     {
         var val = GetValue();
         if (val == null)
@@ -173,19 +193,34 @@ public class RegistryPath
         return new RegistryValue(val, GetValueType().Value);
     }
 
-    private RegistryKey? RelevantKey()
+    public RegistryKey GetAsKey()
     {
-        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath);
+        return RelevantKey(false)?.OpenSubKey(Key, false);
+    }
+
+    public void Delete()
+    {
+        var key = RelevantKey(true);
+        if (key != null)
+        {
+            key.DeleteValue(Key, false);
+            key.DeleteSubKeyTree(Key, false);
+        }
+    }
+
+    private RegistryKey? RelevantKey(bool writable)
+    {
+        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath, writable);
     }
 
     private object? GetValue()
     {
-        return RelevantKey()?.GetValue(Key);
+        return RelevantKey(false)?.GetValue(Key);
     }
 
     private RegistryValueKind? GetValueType()
     {
-        return RelevantKey()?.GetValueKind(Key);
+        return RelevantKey(false)?.GetValueKind(Key);
     }
 
     public bool Exists()
@@ -196,6 +231,18 @@ public class RegistryPath
     public void Set(RegistryValue value)
     {
 
+    }
+
+    public RegistryPath Append(string next)
+    {
+        return new RegistryPath(this.TopLevel, this.KeyPath + Slashes[0] + this.Key, next);
+    }
+
+    private RegistryPath(RegistryHive top, string path, string key)
+    {
+        TopLevel = top;
+        KeyPath = path;
+        Key = key;
     }
 
     [YamlParser.Parser]
