@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	<EnablePreviewFeatures>True</EnablePreviewFeatures>
+	<ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="config.yaml">
+    <None Update="export.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

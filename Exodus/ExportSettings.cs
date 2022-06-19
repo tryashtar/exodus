@@ -1,5 +1,6 @@
 ﻿using Microsoft.Win32;
 using System.Collections.ObjectModel;
+using System.IO.Compression;
 using TryashtarUtils.Utility;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
@@ -17,7 +18,14 @@ public class ExportSettings
     {
         Registry.Finalize();
         Winget.Finalize();
+        Files.Finalize(Path.Combine(folder, "files.zip"));
         YamlHelper.SaveToFile(YamlParser.Serialize(this), Path.Combine(folder, "import.yaml"));
+    }
+    public void PerformImport()
+    {
+        Registry.Perform();
+        Winget.Perform();
+        Files.Perform("files.zip");
     }
 }
 
@@ -29,6 +37,7 @@ public class RegistryExport
     public readonly HashSet<RegistryPath> Delete;
     public void Finalize()
     {
+        Console.WriteLine("Finalizing registry...");
         foreach (var item in Copy)
         {
             if (item.Exists())
@@ -52,6 +61,7 @@ public class WingetExport
     public readonly HashSet<string> Copy;
     public void Finalize()
     {
+        Console.WriteLine("Finalizing winget...");
         if (Copy.Count > 0)
         {
             var packages = WingetWrapper.InstalledPackages().ToHashSet();
@@ -78,16 +88,52 @@ public class WingetExport
     }
 }
 
+[YamlParser.OptionalFields(true)]
 public class FilesExport
 {
     public readonly HashSet<string> Copy;
+    public readonly Dictionary<string, string> Move;
     public readonly HashSet<string> Delete;
+    public readonly Dictionary<string, string> Extract;
+    public void Finalize(string zip_path)
+    {
+        Console.WriteLine("Zipping files...");
+        using var stream = File.OpenWrite(zip_path);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+        foreach (var item in Copy)
+        {
+            var exp = Environment.ExpandEnvironmentVariables(item);
+            Console.WriteLine("   " + exp);
+            zip.CreateEntryFromAny(exp, exp);
+            Extract.Add(exp, item);
+        }
+        Copy.Clear();
+        foreach (var item in Move)
+        {
+            var (exp_from, exp_to) = (Environment.ExpandEnvironmentVariables(item.Key), Environment.ExpandEnvironmentVariables(item.Value));
+            Console.WriteLine("   " + exp_from);
+            zip.CreateEntryFromAny(exp_from, exp_to);
+            Extract.Add(exp_to, item.Value);
+        }
+        Move.Clear();
+    }
+    public void Perform(string zip_path)
+    {
+        foreach (var item in Delete)
+        {
+            if (Directory.Exists(item))
+                Directory.Delete(item, true);
+            else if (File.Exists(item))
+                File.Delete(item);
+        }
+    }
 }
 
 public class RegistryValue
 {
     [YamlParser.Root]
     private readonly string Value;
+    [YamlParser.Parser]
     public RegistryValue(string val)
     {
         Value = val;
