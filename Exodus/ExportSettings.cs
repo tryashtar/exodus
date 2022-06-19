@@ -4,6 +4,7 @@ using System.IO.Compression;
 using TryashtarUtils.Utility;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
+using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 
 namespace Exodus;
@@ -110,10 +111,10 @@ public class FilesExport
         Copy.Clear();
         foreach (var item in Move)
         {
-            var (exp_from, exp_to) = (Environment.ExpandEnvironmentVariables(item.Key), Environment.ExpandEnvironmentVariables(item.Value));
+            var exp_from = Environment.ExpandEnvironmentVariables(item.Key);
             Console.WriteLine("   " + exp_from);
-            zip.CreateEntryFromAny(exp_from, exp_to);
-            Extract.Add(exp_to, item.Value);
+            zip.CreateEntryFromAny(exp_from, exp_from);
+            Extract.Add(exp_from, item.Value);
         }
         Move.Clear();
     }
@@ -121,22 +122,39 @@ public class FilesExport
     {
         foreach (var item in Delete)
         {
-            if (Directory.Exists(item))
-                Directory.Delete(item, true);
-            else if (File.Exists(item))
-                File.Delete(item);
+            var exp = Environment.ExpandEnvironmentVariables(item);
+            if (Directory.Exists(exp))
+                Directory.Delete(exp, true);
+            else if (File.Exists(exp))
+                File.Delete(exp);
         }
     }
 }
 
 public class RegistryValue
 {
-    [YamlParser.Root]
-    private readonly string Value;
-    [YamlParser.Parser]
-    public RegistryValue(string val)
+    public readonly object Value;
+    public readonly RegistryValueKind Type;
+    public RegistryValue(object value, RegistryValueKind type)
     {
-        Value = val;
+        Value = value;
+        Type = type;
+    }
+    [YamlParser.Parser]
+    private RegistryValue(YamlMappingNode node)
+    {
+        Type = YamlParser.Parse<RegistryValueKind>(node["type"]);
+        var value = node["value"];
+        if (Type == RegistryValueKind.String || Type == RegistryValueKind.ExpandString)
+            Value = YamlParser.Parse<string>(value);
+        else if (Type == RegistryValueKind.DWord)
+            Value = YamlParser.Parse<int>(value);
+        else if (Type == RegistryValueKind.QWord)
+            Value = YamlParser.Parse<long>(value);
+        else if (Type == RegistryValueKind.MultiString)
+            Value = YamlParser.Parse<string[]>(value);
+        else if (Type == RegistryValueKind.Binary)
+            Value = YamlParser.Parse<byte[]>(value);
     }
 }
 
@@ -152,13 +170,22 @@ public class RegistryPath
         var val = GetValue();
         if (val == null)
             return null;
-        return new RegistryValue(val.ToString());
+        return new RegistryValue(val, GetValueType().Value);
+    }
+
+    private RegistryKey? RelevantKey()
+    {
+        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath);
     }
 
     private object? GetValue()
     {
-        var key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath);
-        return key?.GetValue(Key);
+        return RelevantKey()?.GetValue(Key);
+    }
+
+    private RegistryValueKind? GetValueType()
+    {
+        return RelevantKey()?.GetValueKind(Key);
     }
 
     public bool Exists()

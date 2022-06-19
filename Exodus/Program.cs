@@ -10,6 +10,9 @@ if (File.Exists("export.yaml"))
     YamlHelper.SaveToFile(again, "export_round.yaml");
 #endif
     settings.CreateExport("export");
+#if DEBUG
+    var extra_parse = YamlParser.Parse<ExportSettings>(YamlHelper.ParseFile(@"export\import.yaml"));
+#endif
 }
 else if (File.Exists("import.yaml"))
 {

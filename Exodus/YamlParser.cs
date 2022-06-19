@@ -1,7 +1,9 @@
 ﻿using Microsoft.Win32;
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using TryashtarUtils.Utility;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
@@ -19,68 +21,178 @@ public static class YamlParser
 
     public static YamlNode Serialize<T>(T item)
     {
-        return Serialize(item, typeof(T));
+        return SerializeObject(item);
     }
 
-    private static YamlNode Serialize(object obj, Type type)
+    private static YamlNode SerializeObject(object obj)
     {
-        if (type == typeof(string))
-            return new YamlScalarNode((string)obj);
+        // primitives
+        if (obj is string s)
+            return new YamlScalarNode(s);
+        var type = obj.GetType();
+        if (type.IsEnum)
+            return new YamlScalarNode(StringUtils.PascalToSnake(obj.ToString()));
+        if (type.IsPrimitive)
+            return new YamlScalarNode(obj.ToString());
+        // actual dictionary
         if (typeof(IDictionary).IsAssignableFrom(type))
         {
             var node = new YamlMappingNode();
             var dict = (IDictionary)obj;
             foreach (var key in dict.Keys)
             {
-                var value = dict[key];
-                node.Add(Serialize(key, key.GetType()), Serialize(value, value.GetType()));
+                node.Add(Serialize(key), Serialize(dict[key]));
             }
             return node;
         }
+        // actual list
         if (typeof(IEnumerable).IsAssignableFrom(type))
         {
             var node = new YamlSequenceNode();
             var list = (IEnumerable)obj;
             foreach (var item in list)
             {
-                node.Add(Serialize(item, item.GetType()));
+                node.Add(Serialize(item));
             }
             return node;
         }
-        var binding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        var fields = type.GetFields(binding);
-        var root = WithAttribute<FieldInfo, RootAttribute>(fields);
+        // special case
+        var root = FindRoot(type);
         if (root != null)
-            return Serialize(root.GetValue(obj), root.FieldType);
-        var serializer_field = WithAttribute<FieldInfo, SerializerAttribute>(fields);
-        if (serializer_field != null)
-            return Serialize(serializer_field.GetValue(obj), serializer_field.FieldType);
-        var methods = type.GetMethods(binding);
-        var serializer_method = WithAttribute<MethodInfo, SerializerAttribute>(methods);
-        if (serializer_method != null)
-            return Serialize(serializer_method.Invoke(obj, null), serializer_method.ReturnType);
+            return Serialize(GetVal(root, obj));
+        var serializer = FindSerializer(type);
+        if (serializer != null)
+            return Serialize(GetVal(serializer, obj));
+        // member-wise object
         var result = new YamlMappingNode();
-        foreach (var field in fields)
+        foreach (MemberInfo member in type.GetFields(PublicBinding).Cast<MemberInfo>().Concat(type.GetProperties(PublicBinding)))
         {
-            var val = field.GetValue(obj);
+            var val = GetVal(member, obj);
             if (val != null)
-                result.Add(GetNameFromField(field), Serialize(val, field.FieldType));
+                result.Add(ConvertName(member), Serialize(val));
         }
         return result;
     }
 
+    private const BindingFlags AllBinding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private const BindingFlags PublicBinding = BindingFlags.Instance | BindingFlags.Public;
+
+    // methods to generalize shared concepts across MemberInfo
+    private static object GetVal(MemberInfo info, object obj)
+    {
+        if (info is FieldInfo f)
+            return f.GetValue(obj);
+        if (info is PropertyInfo p)
+            return p.GetValue(obj);
+        if (info is MethodInfo m)
+            return m.Invoke(obj, null);
+        throw new InvalidOperationException();
+    }
+
+    private static void SetVal(MemberInfo info, object obj, object value)
+    {
+        if (info is FieldInfo f)
+            f.SetValue(obj, value);
+        else if (info is PropertyInfo p)
+            p.SetValue(obj, value);
+        else
+            throw new InvalidOperationException();
+    }
+
+    private static Type TypeOf(MemberInfo info)
+    {
+        if (info is FieldInfo f)
+            return f.FieldType;
+        if (info is PropertyInfo p)
+            return p.PropertyType;
+        if (info is MethodInfo m)
+            return m.ReturnType;
+        throw new InvalidOperationException();
+    }
+
+    private static MemberInfo? FindRoot(Type type)
+    {
+        var fields = type.GetFields(AllBinding);
+        var r_field = WithAttribute<FieldInfo, RootAttribute>(fields);
+        if (r_field != null)
+            return r_field;
+        var properties = type.GetProperties(AllBinding);
+        var r_prop = WithAttribute<PropertyInfo, RootAttribute>(properties);
+        if (r_prop != null)
+            return r_prop;
+        return null;
+    }
+
+    private static MemberInfo? FindSerializer(Type type)
+    {
+        var fields = type.GetFields(AllBinding);
+        var s_field = WithAttribute<FieldInfo, SerializerAttribute>(fields);
+        if (s_field != null)
+            return s_field;
+        var properties = type.GetProperties(AllBinding);
+        var s_prop = WithAttribute<PropertyInfo, SerializerAttribute>(properties);
+        if (s_prop != null)
+            return s_prop;
+        var methods = type.GetMethods(AllBinding);
+        var s_method = WithAttribute<MethodInfo, SerializerAttribute>(methods);
+        if (s_method != null)
+            return s_method;
+        return null;
+    }
+
+    private static MethodBase? FindParser(Type type)
+    {
+        var constructors = type.GetConstructors(AllBinding);
+        var p_cons = WithAttribute<ConstructorInfo, ParserAttribute>(constructors);
+        if (p_cons != null)
+            return p_cons;
+        var methods = type.GetMethods(AllBinding);
+        var p_method = WithAttribute<MethodInfo, ParserAttribute>(methods);
+        if (p_method != null)
+            return p_method;
+        return null;
+    }
+
     private static object Parse(YamlNode node, Type type)
     {
+        // assertion, without this we'll try to member-wise construct System.Object which is a sign something is wrong
+        if (type == typeof(object))
+            throw new InvalidOperationException();
+        // primitives
         if (type == typeof(string))
             return ((YamlScalarNode)node).Value;
-        var binding = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        var constructor = WithAttribute<ConstructorInfo, ParserAttribute>(type.GetConstructors(binding));
-        if (constructor != null)
+        if (type.IsEnum)
+            return Enum.Parse(type, StringUtils.SnakeToPascal(((YamlScalarNode)node).Value));
+        if (type.IsPrimitive)
+            return TypeDescriptor.GetConverter(type).ConvertFrom(((YamlScalarNode)node).Value);
+        // special case
+        var parser = FindParser(type);
+        object result;
+        if (parser != null)
         {
-            var param_type = constructor.GetParameters()[0].ParameterType;
-            return constructor.Invoke(new[] { Parse(node, param_type) });
+            // allow parsers to parse node directly, or convert it to another type first
+            var param_type = parser.GetParameters()[0].ParameterType;
+            object[] parameters;
+            if (typeof(YamlNode).IsAssignableFrom(param_type))
+                parameters = new[] { node };
+            else
+                parameters = new[] { Parse(node, param_type) };
+            // if parser is constructor, use it
+            if (parser is ConstructorInfo c)
+                return c.Invoke(parameters);
+            // otherwise, construct ourselves then call parser
+            result = Activator.CreateInstance(type);
+            parser.Invoke(result, parameters);
+            return result;
         }
-        var result = Activator.CreateInstance(type);
+        result = Activator.CreateInstance(type);
+        var root = FindRoot(type);
+        if (root != null)
+        {
+            SetVal(root, result, Parse(node, TypeOf(root)));
+            return result;
+        }
+        // actual dictionary
         if (result is IDictionary dict)
         {
             var args = type.GetGenericArguments();
@@ -90,6 +202,7 @@ public static class YamlParser
             }
             return dict;
         }
+        // actual list
         var collection_type = type.GetInterfaces().FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>));
         if (collection_type != null)
         {
@@ -102,37 +215,24 @@ public static class YamlParser
             }
             return list;
         }
-        var fields = type.GetFields(binding);
-        var root = WithAttribute<FieldInfo, RootAttribute>(fields);
-        if (root != null)
-        {
-            root.SetValue(result, Parse(node, root.FieldType));
-            return result;
-        }
-        var methods = type.GetMethods(binding);
-        var parser = WithAttribute<MethodInfo, ParserAttribute>(methods);
-        if (parser != null)
-        {
-            var param_type = parser.GetParameters()[0].ParameterType;
-            parser.Invoke(result, new[] { Parse(node, param_type) });
-            return result;
-        }
+        // member-wise object
         var map = (YamlMappingNode)node;
         var unused_nodes = map.Children.Keys.ToHashSet();
         var optional = type.GetCustomAttribute<OptionalFieldsAttribute>();
-        foreach (var field in fields.Where(x => x.IsPublic))
+        var fields = type.GetFields(PublicBinding).Cast<MemberInfo>().Concat(type.GetProperties(PublicBinding).Where(x => x.CanWrite));
+        foreach (var field in fields)
         {
-            string name = GetNameFromField(field);
+            string name = ConvertName(field);
             var subnode = map.TryGet(name);
             if (subnode == null)
             {
                 if (optional == null)
                     throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
                 if (optional.InitializeWhenNull)
-                    field.SetValue(result, Activator.CreateInstance(field.FieldType));
+                    SetVal(field, result, Activator.CreateInstance(TypeOf(field)));
                 continue;
             }
-            field.SetValue(result, Parse(subnode, field.FieldType));
+            SetVal(field, result, Parse(subnode, TypeOf(field)));
             unused_nodes.Remove(name);
         }
         if (unused_nodes.Count > 0)
@@ -140,7 +240,7 @@ public static class YamlParser
         return result;
     }
 
-    private static T WithAttribute<T, U>(T[] members) where T : MemberInfo where U : Attribute
+    private static T? WithAttribute<T, U>(IEnumerable<T> members) where T : MemberInfo where U : Attribute
     {
         foreach (var member in members)
         {
@@ -151,9 +251,9 @@ public static class YamlParser
         return null;
     }
 
-    private static string GetNameFromField(FieldInfo field)
+    private static string ConvertName(MemberInfo member)
     {
-        return StringUtils.PascalToSnake(field.Name);
+        return StringUtils.PascalToSnake(member.Name);
     }
 
     [AttributeUsage(AttributeTargets.Class)]
@@ -165,10 +265,10 @@ public static class YamlParser
             InitializeWhenNull = init_nulls;
         }
     }
-    [AttributeUsage(AttributeTargets.Field)]
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public class RootAttribute : Attribute { }
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]
     public class ParserAttribute : Attribute { }
-    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Field | AttributeTargets.Property)]
     public class SerializerAttribute : Attribute { }
 }
