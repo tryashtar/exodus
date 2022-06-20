@@ -16,7 +16,15 @@ if (File.Exists("export.yaml"))
 }
 else if (File.Exists("import.yaml"))
 {
-    var node = YamlHelper.ParseFile("import.yaml");
-    var settings = YamlParser.Parse<ExportSettings>(node);
-    settings.PerformImport();
+    try
+    {
+        var node = YamlHelper.ParseFile("import.yaml");
+        var settings = YamlParser.Parse<ExportSettings>(node);
+        settings.PerformImport();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(ex.ToString());
+        Console.ReadLine();
+    }
 }

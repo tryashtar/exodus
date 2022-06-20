@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.IO.Compression;
+using System.Security.AccessControl;
 using TryashtarUtils.Utility;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
@@ -20,6 +21,7 @@ public class ExportSettings
         Registry.Finalize();
         Winget.Finalize();
         Files.Finalize(Path.Combine(folder, "files.zip"));
+        Console.WriteLine("Writing config...");
         YamlHelper.SaveToFile(YamlParser.Serialize(this), Path.Combine(folder, "import.yaml"));
     }
     public void PerformImport()
@@ -30,15 +32,37 @@ public class ExportSettings
     }
 }
 
+public class FileAssociation
+{
+    public readonly string Id;
+    public readonly string Desc;
+    public readonly string Path;
+    public readonly List<string> Extensions;
+}
+
 [YamlParser.OptionalFields(true)]
 public class RegistryExport
 {
     public readonly Dictionary<RegistryPath, RegistryValue> Set;
     public readonly HashSet<RegistryPath> Copy;
     public readonly HashSet<RegistryPath> Delete;
+    public readonly List<FileAssociation> Associations;
     public void Finalize()
     {
         Console.WriteLine("Finalizing registry...");
+        foreach (var assoc in Associations)
+        {
+            Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", null), new RegistryValue(assoc.Desc));
+            Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", "FriendlyTypeName"), new RegistryValue(assoc.Desc));
+            Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}\shell\open\command", null), new RegistryValue(assoc.Path));
+            foreach (var ext in assoc.Extensions)
+            {
+                string ext_fix = ext.StartsWith('.') ? ext : '.' + ext;
+                Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", null), new RegistryValue(assoc.Id));
+                Delete.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", "OpenWithProgids"));
+            }
+        }
+        Associations.Clear();
         foreach (var item in Copy)
         {
             FinalizeSingle(item);
@@ -67,9 +91,14 @@ public class RegistryExport
     }
     public void Perform()
     {
+        Console.WriteLine("Importing registry...");
         foreach (var item in Delete)
         {
             item.Delete();
+        }
+        foreach (var item in Set)
+        {
+            item.Key.SetValue(item.Value);
         }
     }
 }
@@ -98,9 +127,15 @@ public class WingetExport
     }
     public void Perform()
     {
-        foreach (var item in Install)
+        Console.WriteLine("Installing packages...");
+        if (Install.Count > 0)
         {
-            WingetWrapper.Install(item);
+            var packages = WingetWrapper.InstalledPackages().ToHashSet();
+            foreach (var item in Install)
+            {
+                if (!packages.Contains(item))
+                    WingetWrapper.Install(item);
+            }
         }
         foreach (var item in Uninstall)
         {
@@ -109,34 +144,60 @@ public class WingetExport
     }
 }
 
+public record FileMove(string From, string To, FolderWrite Method)
+{
+    [YamlParser.Parser]
+    private FileMove(YamlNode node) : this(default, default, default) // cringe
+    {
+        if (node is YamlScalarNode simple)
+        {
+            this.From = simple.Value;
+            this.To = simple.Value;
+            this.Method = FolderWrite.Replace;
+        }
+        else
+        {
+            var map = (YamlMappingNode)node;
+            var both = map.TryGet("file");
+            if (both != null)
+            {
+                this.From = YamlParser.Parse<string>(both);
+                this.To = this.From;
+            }
+            else
+            {
+                this.From = YamlParser.Parse<string>(map["from"]);
+                this.To = YamlParser.Parse<string>(map["to"]);
+            }
+            var method = map.TryGet("method");
+            if (method == null)
+                this.Method = FolderWrite.Replace;
+            else
+                this.Method = YamlParser.Parse<FolderWrite>(method);
+        }
+    }
+}
+
 [YamlParser.OptionalFields(true)]
 public class FilesExport
 {
-    public readonly HashSet<string> Copy;
-    public readonly Dictionary<string, string> Move;
+    public readonly List<FileMove> Copy;
     public readonly HashSet<string> Delete;
-    public readonly Dictionary<string, string> Extract;
+    public readonly HashSet<string> Wipe;
+    public readonly List<FileMove> Extract;
     public void Finalize(string zip_path)
     {
         Console.WriteLine("Zipping files...");
-        using var stream = File.OpenWrite(zip_path);
+        using var stream = File.Create(zip_path);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
         foreach (var item in Copy)
         {
-            var exp = Environment.ExpandEnvironmentVariables(item);
+            var exp = Environment.ExpandEnvironmentVariables(item.From);
             Console.WriteLine("   " + exp);
             zip.CreateEntryFromAny(exp, exp);
-            Extract.Add(exp, item);
+            Extract.Add(new FileMove(exp.Replace('\\', '/'), item.To, item.Method));
         }
         Copy.Clear();
-        foreach (var item in Move)
-        {
-            var exp_from = Environment.ExpandEnvironmentVariables(item.Key);
-            Console.WriteLine("   " + exp_from);
-            zip.CreateEntryFromAny(exp_from, exp_from);
-            Extract.Add(exp_from, item.Value);
-        }
-        Move.Clear();
     }
     public void Perform(string zip_path)
     {
@@ -148,7 +209,29 @@ public class FilesExport
             else if (File.Exists(exp))
                 File.Delete(exp);
         }
+        foreach (var item in Wipe)
+        {
+            var exp = Environment.ExpandEnvironmentVariables(item);
+            if (Directory.Exists(exp))
+                IOUtils.WipeDirectory(exp);
+        }
+        Console.WriteLine("Extracting zip...");
+        using var stream = File.OpenRead(zip_path);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
+        foreach (var item in Extract)
+        {
+            var dest = Environment.ExpandEnvironmentVariables(item.To);
+            if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
+                IOUtils.WipeDirectory(dest);
+            zip.ExtractDirectoryEntry(item.From, dest, true);
+        }
     }
+}
+
+public enum FolderWrite
+{
+    Replace,
+    Merge
 }
 
 public class RegistryValue
@@ -160,6 +243,13 @@ public class RegistryValue
         Value = value;
         Type = type;
     }
+
+    public RegistryValue(string value)
+    {
+        Value = value;
+        Type = RegistryValueKind.String;
+    }
+
     [YamlParser.Parser]
     private RegistryValue(YamlMappingNode node)
     {
@@ -175,6 +265,8 @@ public class RegistryValue
             Value = YamlParser.Parse<string[]>(value);
         else if (Type == RegistryValueKind.Binary)
             Value = YamlParser.Parse<byte[]>(value);
+        else if (Type == RegistryValueKind.None)
+            Value = Array.Empty<byte>();
     }
 }
 
@@ -185,6 +277,7 @@ public class RegistryPath
     private readonly string Key;
     private static readonly char[] Slashes = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
 
+    // an actual value in the registry
     public RegistryValue? GetAsValue()
     {
         var val = GetValue();
@@ -193,6 +286,7 @@ public class RegistryPath
         return new RegistryValue(val, GetValueType().Value);
     }
 
+    // a "folder" that contains other keys/values
     public RegistryKey GetAsKey()
     {
         return RelevantKey(false)?.OpenSubKey(Key, false);
@@ -208,9 +302,26 @@ public class RegistryPath
         }
     }
 
+    public void SetValue(RegistryValue value)
+    {
+        try
+        {
+            var key = RelevantKey(true);
+            if (key == null)
+                key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).CreateSubKey(KeyPath, RegistryKeyPermissionCheck.ReadWriteSubTree);
+            key.SetValue(Key, value.Value, value.Type);
+        }
+        catch
+        {
+            Console.WriteLine($"Failed to set {this}");
+            throw;
+        }
+    }
+
     private RegistryKey? RelevantKey(bool writable)
     {
-        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath, writable);
+        var key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath, true);
+        return key;
     }
 
     private object? GetValue()
@@ -223,22 +334,12 @@ public class RegistryPath
         return RelevantKey(false)?.GetValueKind(Key);
     }
 
-    public bool Exists()
-    {
-        return GetValue() != null;
-    }
-
-    public void Set(RegistryValue value)
-    {
-
-    }
-
     public RegistryPath Append(string next)
     {
         return new RegistryPath(this.TopLevel, this.KeyPath + Slashes[0] + this.Key, next);
     }
 
-    private RegistryPath(RegistryHive top, string path, string key)
+    public RegistryPath(RegistryHive top, string path, string key)
     {
         TopLevel = top;
         KeyPath = path;
