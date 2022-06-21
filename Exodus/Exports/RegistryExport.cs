@@ -52,6 +52,7 @@ public class RegistryExport
                 string ext_fix = ext.StartsWith('.') ? ext : '.' + ext;
                 new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", null).SetValue(new RegistryValue(assoc.Id));
                 new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", "OpenWithProgids").Delete();
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}", "UserChoice").Delete();
                 new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "ProgId").SetValue(new RegistryValue(assoc.Id));
                 new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "Hash").SetValue(new RegistryValue(StupidFileExtensionRegistryHack.GetHash(assoc.Id, ext_fix)));
             }

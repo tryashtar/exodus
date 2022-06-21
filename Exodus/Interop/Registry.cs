@@ -31,7 +31,7 @@ public class RegistryPath
         if (key != null)
         {
             key.DeleteValue(Key, false);
-            key.DeleteSubKeyTree(Key, false);
+            key.DeleteSubKey(Key, false);
         }
     }
 
@@ -53,7 +53,7 @@ public class RegistryPath
 
     private RegistryKey? RelevantKey(bool writable)
     {
-        var key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath, true);
+        var key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath, writable);
         return key;
     }
 
