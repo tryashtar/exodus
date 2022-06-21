@@ -1,12 +1,8 @@
-﻿using Microsoft.Win32;
-using System.Collections.ObjectModel;
+﻿using AdysTech.CredentialManager;
+using Microsoft.Win32;
 using System.IO.Compression;
-using System.Security.AccessControl;
 using TryashtarUtils.Utility;
-using YamlDotNet.Core;
-using YamlDotNet.Core.Events;
 using YamlDotNet.RepresentationModel;
-using YamlDotNet.Serialization;
 
 namespace Exodus;
 
@@ -16,10 +12,12 @@ public class ExportSettings
     public readonly RegistryExport Registry;
     public readonly WingetExport Winget;
     public readonly FilesExport Files;
+    public readonly CredentialsExport Credentials;
     public void CreateExport(string folder)
     {
         Registry.Finalize();
         Winget.Finalize();
+        Credentials.Finalize();
         Files.Finalize(Path.Combine(folder, "files.zip"));
         Console.WriteLine("Writing config...");
         YamlHelper.SaveToFile(YamlParser.Serialize(this), Path.Combine(folder, "import.yaml"));
@@ -28,8 +26,43 @@ public class ExportSettings
     {
         Registry.Perform();
         Winget.Perform();
+        Credentials.Perform();
         Files.Perform("files.zip");
     }
+}
+
+[YamlParser.OptionalFields(true)]
+public class CredentialsExport
+{
+    public readonly HashSet<string> Copy;
+    public readonly HashSet<string> Delete;
+    public readonly List<Credentials> Add;
+    public void Finalize()
+    {
+        foreach (var item in Copy)
+        {
+            var cm = CredentialManager.GetCredentials(item);
+            if (cm != null)
+                Add.Add(new Credentials(item, cm.UserName, cm.Password));
+        }
+        Copy.Clear();
+    }
+    public void Perform()
+    {
+        foreach (var item in Add)
+        {
+            CredentialManager.SaveCredentials(item.Target, new System.Net.NetworkCredential(item.Username, item.Password));
+        }
+        foreach (var item in Delete)
+        {
+            CredentialManager.RemoveCredentials(item);
+        }
+    }
+}
+
+public record Credentials(string Target, string Username, string Password)
+{
+    public Credentials() : this(default, default, default) { } // cringe
 }
 
 public class FileAssociation
@@ -50,19 +83,6 @@ public class RegistryExport
     public void Finalize()
     {
         Console.WriteLine("Finalizing registry...");
-        foreach (var assoc in Associations)
-        {
-            Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", null), new RegistryValue(assoc.Desc));
-            Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", "FriendlyTypeName"), new RegistryValue(assoc.Desc));
-            Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}\shell\open\command", null), new RegistryValue(assoc.Path));
-            foreach (var ext in assoc.Extensions)
-            {
-                string ext_fix = ext.StartsWith('.') ? ext : '.' + ext;
-                Set.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", null), new RegistryValue(assoc.Id));
-                Delete.Add(new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", "OpenWithProgids"));
-            }
-        }
-        Associations.Clear();
         foreach (var item in Copy)
         {
             FinalizeSingle(item);
@@ -92,6 +112,21 @@ public class RegistryExport
     public void Perform()
     {
         Console.WriteLine("Importing registry...");
+        foreach (var assoc in Associations)
+        {
+            // we can't do this in finalize phase because the hash part needs to run on the destination machine
+            new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", null).SetValue(new RegistryValue(assoc.Desc));
+            new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", "FriendlyTypeName").SetValue(new RegistryValue(assoc.Desc));
+            new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}\shell\open\command", null).SetValue(new RegistryValue(assoc.Path));
+            foreach (var ext in assoc.Extensions)
+            {
+                string ext_fix = ext.StartsWith('.') ? ext : '.' + ext;
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", null).SetValue(new RegistryValue(assoc.Id));
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", "OpenWithProgids").Delete();
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "ProgId").SetValue(new RegistryValue(assoc.Id));
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "Hash").SetValue(new RegistryValue(StupidFileExtensionRegistryHack.GetHash(assoc.Id, ext_fix)));
+            }
+        }
         foreach (var item in Delete)
         {
             item.Delete();
@@ -188,6 +223,7 @@ public class FilesExport
     public void Finalize(string zip_path)
     {
         Console.WriteLine("Zipping files...");
+        Directory.CreateDirectory(Path.GetDirectoryName(zip_path));
         using var stream = File.Create(zip_path);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
         foreach (var item in Copy)
@@ -326,7 +362,7 @@ public class RegistryPath
 
     private object? GetValue()
     {
-        return RelevantKey(false)?.GetValue(Key);
+        return RelevantKey(false)?.GetValue(Key, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
     }
 
     private RegistryValueKind? GetValueType()
