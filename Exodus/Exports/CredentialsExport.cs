@@ -10,6 +10,7 @@ public class CredentialsExport
     public readonly List<Credentials> Add;
     public void Finalize()
     {
+        Console.WriteLine("Finalizing credentials...");
         foreach (var item in Copy)
         {
             var cm = CredentialManager.GetCredentials(item);
@@ -20,6 +21,7 @@ public class CredentialsExport
     }
     public void Perform()
     {
+        Console.WriteLine("Importing credentials...");
         foreach (var item in Add)
         {
             CredentialManager.SaveCredentials(item.Target, new System.Net.NetworkCredential(item.Username, item.Password));

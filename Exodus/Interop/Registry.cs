@@ -31,6 +31,7 @@ public class RegistryPath
         if (key != null)
         {
             key.DeleteValue(Key, false);
+            key.DeleteSubKeyTree(Key, false);
             key.DeleteSubKey(Key, false);
         }
     }

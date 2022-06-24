@@ -20,8 +20,8 @@ public class FilesExport
         {
             var exp = Environment.ExpandEnvironmentVariables(item.From);
             Console.WriteLine("   " + exp);
-            zip.CreateEntryFromAny(exp, exp);
-            Extract.Add(new FileMove(exp.Replace('\\', '/'), item.To, item.Method));
+            zip.CreateEntryFromAny(exp, exp.Replace(':', '_'));
+            Extract.Add(new FileMove(exp.Replace('\\', '/').Replace(':', '_'), item.To, item.Method));
         }
         Copy.Clear();
     }
@@ -49,7 +49,11 @@ public class FilesExport
             var dest = Environment.ExpandEnvironmentVariables(item.To);
             if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
                 IOUtils.WipeDirectory(dest);
-            zip.ExtractDirectoryEntry(item.From, dest, true);
+            var entry = zip.GetEntry(item.From);
+            if (entry != null)
+                entry.ExtractToFile(dest, true);
+            else
+                zip.ExtractDirectoryEntry(item.From, dest, true);
         }
     }
 }

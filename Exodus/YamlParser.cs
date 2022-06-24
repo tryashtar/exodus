@@ -206,6 +206,7 @@ public static class YamlParser
         var collection_type = type.GetInterfaces().FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>));
         if (collection_type != null)
         {
+            Console.WriteLine(node);
             dynamic list = result;
             var arg = type.GetGenericArguments()[0];
             foreach (var item in (YamlSequenceNode)node)
