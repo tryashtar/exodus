@@ -226,9 +226,9 @@ public static class YamlParser
             var subnode = map.TryGet(name);
             if (subnode == null)
             {
-                if (optional == null)
+                if (optional == null && Nullable.GetUnderlyingType(TypeOf(field)) != null)
                     throw new InvalidDataException($"While parsing {type.Name}, field {name} was missing!");
-                if (optional.InitializeWhenNull)
+                if (optional != null && optional.InitializeWhenNull)
                     SetVal(field, result, Activator.CreateInstance(TypeOf(field)));
                 continue;
             }

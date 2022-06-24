@@ -20,7 +20,7 @@ public class RegistryPath
     }
 
     // a "folder" that contains other keys/values
-    public RegistryKey GetAsKey()
+    public RegistryKey? GetAsKey()
     {
         return RelevantKey(false)?.OpenSubKey(Key, false);
     }
