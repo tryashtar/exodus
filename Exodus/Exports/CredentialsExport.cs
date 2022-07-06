@@ -1,4 +1,5 @@
 ﻿using AdysTech.CredentialManager;
+using System.Text;
 
 namespace Exodus;
 
@@ -15,7 +16,7 @@ public class CredentialsExport
         {
             var cm = CredentialManager.GetCredentials(item);
             if (cm != null)
-                Add.Add(new Credentials(item, cm.UserName, cm.Password));
+                Add.Add(new Credentials(item, cm.UserName, Convert.ToBase64String(Encoding.Unicode.GetBytes(cm.Password))));
         }
         Copy.Clear();
     }
@@ -24,7 +25,7 @@ public class CredentialsExport
         Console.WriteLine("Importing credentials...");
         foreach (var item in Add)
         {
-            CredentialManager.SaveCredentials(item.Target, new System.Net.NetworkCredential(item.Username, item.Password));
+            CredentialManager.SaveCredentials(item.Target, new System.Net.NetworkCredential(item.Username, Encoding.Unicode.GetString(Convert.FromBase64String(item.Password))));
         }
         foreach (var item in Delete)
         {

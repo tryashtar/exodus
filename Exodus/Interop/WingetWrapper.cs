@@ -26,13 +26,13 @@ public static class WingetWrapper
         }
     }
 
-    public static void Install(string name)
+    public static ProcessResult Install(string name)
     {
-        var result = new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"install \"{name}\"").Result;
+        return new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"install --accept-package-agreements -e \"{name}\"").Result;
     }
 
-    public static void Uninstall(string name)
+    public static ProcessResult Uninstall(string name)
     {
-        var result = new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"uninstall \"{name}\"").Result;
+        return new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"uninstall -e \"{name}\"").Result;
     }
 }

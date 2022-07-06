@@ -185,7 +185,10 @@ public static class YamlParser
             parser.Invoke(result, parameters);
             return result;
         }
-        result = Activator.CreateInstance(type);
+        if (type.IsArray)
+            result = Activator.CreateInstance(typeof(List<>).MakeGenericType(type.GetElementType()));
+        else
+            result = Activator.CreateInstance(type);
         var root = FindRoot(type);
         if (root != null)
         {
@@ -206,14 +209,15 @@ public static class YamlParser
         var collection_type = type.GetInterfaces().FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(ICollection<>));
         if (collection_type != null)
         {
-            Console.WriteLine(node);
             dynamic list = result;
-            var arg = type.GetGenericArguments()[0];
+            var arg = type.IsArray ? type.GetElementType() : type.GetGenericArguments()[0];
             foreach (var item in (YamlSequenceNode)node)
             {
                 dynamic parsed = Parse(item, arg);
                 list.Add(parsed);
             }
+            if (type.IsArray)
+                return list.ToArray();
             return list;
         }
         // member-wise object

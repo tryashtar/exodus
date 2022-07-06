@@ -20,8 +20,22 @@ public class FilesExport
         {
             var exp = Environment.ExpandEnvironmentVariables(item.From);
             Console.WriteLine("   " + exp);
-            zip.CreateEntryFromAny(exp, exp.Replace(':', '_'));
-            Extract.Add(new FileMove(exp.Replace('\\', '/').Replace(':', '_'), item.To, item.Method));
+            bool success = false;
+            while (!success)
+            {
+                try
+                {
+                    zip.CreateEntryFromAny(exp, exp.Replace(':', '_'));
+                    Extract.Add(new FileMove(exp.Replace('\\', '/').Replace(':', '_'), item.To, item.Method));
+                    success = true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("    Error: " + ex.ToString());
+                    Console.WriteLine("    Redo?");
+                    success = Console.ReadLine().ToLower() == "n";
+                }
+            }
         }
         Copy.Clear();
     }
