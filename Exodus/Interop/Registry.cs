@@ -6,11 +6,14 @@ namespace Exodus;
 public class RegistryPath
 {
     private readonly RegistryHive TopLevel;
-    private readonly string KeyPath;
-    private readonly string Key;
+    private readonly string FolderPath;
+    private readonly string? KeyName;
+    public bool IsFolder => KeyName == null;
     private static readonly char[] Slashes = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
 
     // an actual value in the registry
+    // for keys, is the value of the key
+    // for folders, is the value of (Default)
     public RegistryValue? GetAsValue()
     {
         var val = GetValue();
@@ -19,20 +22,49 @@ public class RegistryPath
         return new RegistryValue(val, GetValueType().Value);
     }
 
-    // a "folder" that contains other keys/values
+    public RegistryKey? GetAsFolder()
+    {
+        AssertFolderMode(true);
+        return RelevantFolder(false);
+    }
+
     public RegistryKey? GetAsKey()
     {
-        return RelevantKey(false)?.OpenSubKey(Key, false);
+        AssertFolderMode(false);
+        return RelevantFolder(false).OpenSubKey(KeyName, false);
+    }
+
+    public bool Exists()
+    {
+        var folder = RelevantFolder(false);
+        if (folder == null)
+            return false;
+        if (IsFolder)
+            return true;
+        return folder.OpenSubKey(KeyName, false) != null;
+    }
+
+    private void AssertFolderMode(bool folder)
+    {
+        if (IsFolder && !folder)
+            throw new InvalidOperationException($"Expected registry key path, got {this}");
+        if (!IsFolder && folder)
+            throw new InvalidOperationException($"Expected registry folder path, got {this}");
     }
 
     public void Delete()
     {
-        var key = RelevantKey(true);
-        if (key != null)
+        var folder = ParentFolder(true);
+        if (folder != null)
         {
-            key.DeleteValue(Key, false);
-            key.DeleteSubKeyTree(Key, false);
-            key.DeleteSubKey(Key, false);
+            if (IsFolder)
+            {
+                string folder_name = FolderPath[(FolderPath.LastIndexOfAny(Slashes) + 1)..];
+                folder.DeleteSubKeyTree(folder_name, false);
+                folder.DeleteSubKey(folder_name, false);
+            }
+            else
+                folder.DeleteValue(KeyName, false);
         }
     }
 
@@ -40,10 +72,10 @@ public class RegistryPath
     {
         try
         {
-            var key = RelevantKey(true);
-            if (key == null)
-                key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).CreateSubKey(KeyPath, RegistryKeyPermissionCheck.ReadWriteSubTree);
-            key.SetValue(Key, value.Value, value.Type);
+            var folder = RelevantFolder(true);
+            if (folder == null)
+                folder = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).CreateSubKey(FolderPath, RegistryKeyPermissionCheck.ReadWriteSubTree);
+            folder.SetValue(KeyName, value.Value, value.Type);
         }
         catch
         {
@@ -52,32 +84,47 @@ public class RegistryPath
         }
     }
 
-    private RegistryKey? RelevantKey(bool writable)
+    // either this folder, or the folder containing the key
+    private RegistryKey? RelevantFolder(bool writable)
     {
-        var key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(KeyPath, writable);
-        return key;
+        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(FolderPath, writable);
+    }
+
+    // the folder containing the key or folder
+    private RegistryKey? ParentFolder(bool writable)
+    {
+        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(FolderPath[..FolderPath.LastIndexOfAny(Slashes)], writable);
     }
 
     private object? GetValue()
     {
-        return RelevantKey(false)?.GetValue(Key, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        return RelevantFolder(false)?.GetValue(KeyName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
     }
 
     private RegistryValueKind? GetValueType()
     {
-        return RelevantKey(false)?.GetValueKind(Key);
+        return RelevantFolder(false)?.GetValueKind(KeyName);
     }
 
-    public RegistryPath Append(string next)
+    public IEnumerable<RegistryPath> SubPaths()
     {
-        return new RegistryPath(this.TopLevel, this.KeyPath + Slashes[0] + this.Key, next);
+        AssertFolderMode(true);
+        var folder = GetAsFolder();
+        foreach (var sub in folder.GetValueNames())
+        {
+            yield return new RegistryPath(this.TopLevel, this.FolderPath, sub);
+        }
+        foreach (var sub in folder.GetSubKeyNames())
+        {
+            yield return new RegistryPath(this.TopLevel, this.FolderPath + Slashes[0] + sub, null);
+        }
     }
 
-    public RegistryPath(RegistryHive top, string path, string key)
+    public RegistryPath(RegistryHive top, string path, string? key)
     {
         TopLevel = top;
-        KeyPath = path;
-        Key = key;
+        FolderPath = path;
+        KeyName = key;
     }
 
     [YamlParser.Parser]
@@ -95,8 +142,10 @@ public class RegistryPath
             _ => throw new ArgumentException($"Couldn't parse registry path {val}")
         };
         int last = val.LastIndexOfAny(Slashes);
-        Key = val[(last + 1)..];
-        KeyPath = val[(index + 1)..last];
+        KeyName = val[(last + 1)..];
+        FolderPath = val[(index + 1)..last];
+        if (KeyName.Length == 0)
+            KeyName = null;
     }
 
     [YamlParser.Serializer]
@@ -111,12 +160,12 @@ public class RegistryPath
             RegistryHive.CurrentConfig => "HKEY_CURRENT_CONFIG",
             _ => throw new ArgumentException($"Couldn't parse registry path {TopLevel}")
         };
-        return start + Slashes[0] + KeyPath + Slashes[0] + Key;
+        return start + Slashes[0] + FolderPath + Slashes[0] + KeyName;
     }
 
     public override int GetHashCode()
     {
-        return (TopLevel, KeyPath, Key).GetHashCode();
+        return HashCode.Combine(TopLevel, FolderPath, KeyName);
     }
 }
 

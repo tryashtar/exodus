@@ -22,21 +22,16 @@ public class RegistryExport
     private void FinalizeSingle(RegistryPath item)
     {
         var val = item.GetAsValue();
-        var key = item.GetAsKey();
         if (val != null)
             Set[item] = val;
-        if (key != null)
+        if (item.IsFolder)
         {
-            foreach (var sub in key.GetValueNames())
+            foreach (var sub in item.SubPaths())
             {
-                FinalizeSingle(item.Append(sub));
-            }
-            foreach (var sub in key.GetSubKeyNames())
-            {
-                FinalizeSingle(item.Append(sub));
+                FinalizeSingle(sub);
             }
         }
-        if (val == null && key == null)
+        if (!item.Exists())
             Delete.Add(item);
     }
     public void Perform()

@@ -53,18 +53,26 @@ public class WingetExport
     public void Perform()
     {
         Console.WriteLine("Installing packages...");
-        if (Install.Count > 0)
+        var packages = WingetWrapper.InstalledPackages().ToHashSet();
+        foreach (var item in Install)
         {
-            var packages = WingetWrapper.InstalledPackages().ToHashSet();
-            foreach (var item in Install)
+            if (!packages.Contains(item))
             {
-                if (!packages.Contains(item))
-                    WingetWrapper.Install(item);
+                Console.WriteLine("    Installing " + item);
+                WingetWrapper.Install(item);
             }
+            else
+                Console.WriteLine($"    Already installed: {item}");
         }
         foreach (var item in Uninstall)
         {
-            WingetWrapper.Uninstall(item);
+            if (packages.Contains(item))
+            {
+                Console.WriteLine("    Removing " + item);
+                WingetWrapper.Uninstall(item);
+            }
+            else
+                Console.WriteLine($"    Not found: {item}");
         }
     }
 }
