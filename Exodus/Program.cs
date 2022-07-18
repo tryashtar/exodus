@@ -21,10 +21,11 @@ else if (File.Exists("import.yaml"))
         var node = YamlHelper.ParseFile("import.yaml");
         var settings = YamlParser.Parse<ExportSettings>(node);
         settings.PerformImport();
+        Console.WriteLine("Done!");
     }
     catch (Exception ex)
     {
         Console.WriteLine(ex.ToString());
-        Console.ReadLine();
     }
+    Console.ReadLine();
 }

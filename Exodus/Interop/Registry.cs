@@ -28,20 +28,11 @@ public class RegistryPath
         return RelevantFolder(false);
     }
 
-    public RegistryKey? GetAsKey()
-    {
-        AssertFolderMode(false);
-        return RelevantFolder(false).OpenSubKey(KeyName, false);
-    }
-
     public bool Exists()
     {
-        var folder = RelevantFolder(false);
-        if (folder == null)
-            return false;
         if (IsFolder)
-            return true;
-        return folder.OpenSubKey(KeyName, false) != null;
+            return RelevantFolder(false) != null;
+        return GetValue() != null;
     }
 
     private void AssertFolderMode(bool folder)

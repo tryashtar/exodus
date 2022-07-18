@@ -12,18 +12,18 @@ public class ExportSettings
     public readonly CredentialsExport Credentials;
     public void CreateExport(string folder)
     {
-        Registry.Finalize();
-        Winget.Finalize();
         Credentials.Finalize();
+        Winget.Finalize();
+        Registry.Finalize();
         Files.Finalize(Path.Combine(folder, "files.zip"));
         Console.WriteLine("Writing config...");
         YamlHelper.SaveToFile(YamlParser.Serialize(this), Path.Combine(folder, "import.yaml"));
     }
     public void PerformImport()
     {
-        Registry.Perform();
-        Winget.Perform();
         Credentials.Perform();
+        Winget.Perform();
+        Registry.Perform();
         Files.Perform("files.zip");
     }
 }
