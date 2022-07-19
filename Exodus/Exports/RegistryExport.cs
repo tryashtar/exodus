@@ -69,12 +69,12 @@ public class ScopedPathVarExport
     public readonly List<string> Append;
     public void Perform(RegistryPath path)
     {
-        var value = (string)path.GetAsValue().Value;
+        var value = ((string)path.GetAsValue().Value).Split(';').ToList();
         foreach (var item in Append)
         {
-            value += item + ';';
+            value.Add(item);
         }
-        path.SetValue(new RegistryValue(value, RegistryValueKind.ExpandString));
+        path.SetValue(new RegistryValue(String.Join(';', value.Distinct()) + ';', RegistryValueKind.ExpandString));
     }
 }
 

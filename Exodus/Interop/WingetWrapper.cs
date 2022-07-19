@@ -13,7 +13,7 @@ public static class WingetWrapper
     public static IEnumerable<string> InstalledPackages()
     {
         var file = Path.GetTempFileName();
-        var cmd = ProcessWrapper.RunCommand("winget", $"export --output \"{file}\" --source winget");
+        var cmd = ProcessWrapper.RunCommand("winget", $"export --output \"{file}\"");
         if (cmd.ExitCode != 0)
             throw new Exception(cmd.Error);
         var json = JsonDocument.Parse(File.OpenRead(file)).RootElement;
@@ -28,7 +28,7 @@ public static class WingetWrapper
 
     public static ProcessResult Install(string name)
     {
-        return new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"install --accept-package-agreements -e \"{name}\"").Result;
+        return new ProcessWrapper(Directory.GetCurrentDirectory(), "winget", $"install --accept-source-agreements --accept-package-agreements -e \"{name}\"").Result;
     }
 
     public static ProcessResult Uninstall(string name)

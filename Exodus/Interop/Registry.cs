@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using System.Security.AccessControl;
 using YamlDotNet.RepresentationModel;
 
 namespace Exodus;
@@ -45,17 +46,25 @@ public class RegistryPath
 
     public void Delete()
     {
-        var folder = ParentFolder(true);
-        if (folder != null)
+        try
         {
-            if (IsFolder)
+            var folder = ParentFolder(true);
+            if (folder != null)
             {
-                string folder_name = FolderPath[(FolderPath.LastIndexOfAny(Slashes) + 1)..];
-                folder.DeleteSubKeyTree(folder_name, false);
-                folder.DeleteSubKey(folder_name, false);
+                if (IsFolder)
+                {
+                    string folder_name = FolderPath[(FolderPath.LastIndexOfAny(Slashes) + 1)..];
+                    folder.DeleteSubKeyTree(folder_name, false);
+                    folder.DeleteSubKey(folder_name, false);
+                }
+                else
+                    folder.DeleteValue(KeyName, false);
             }
-            else
-                folder.DeleteValue(KeyName, false);
+        }
+        catch
+        {
+            Console.WriteLine($"Failed to delete {this}");
+            throw;
         }
     }
 
@@ -75,16 +84,47 @@ public class RegistryPath
         }
     }
 
+    private void TakePermission(string folder_path)
+    {
+        var key = RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(folder_path, RegistryRights.ChangePermissions);
+        var rs = key.GetAccessControl();
+        rs.AddAccessRule(
+            new RegistryAccessRule(
+                Environment.UserDomainName + "\\" + Environment.UserName,
+                RegistryRights.WriteKey
+                | RegistryRights.ReadKey
+                | RegistryRights.Delete
+                | RegistryRights.FullControl,
+                AccessControlType.Allow));
+    }
+
     // either this folder, or the folder containing the key
     private RegistryKey? RelevantFolder(bool writable)
     {
-        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(FolderPath, writable);
+        try
+        {
+            return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(FolderPath, writable);
+        }
+        catch
+        {
+            TakePermission(FolderPath);
+            return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(FolderPath, writable);
+        }
     }
 
     // the folder containing the key or folder
     private RegistryKey? ParentFolder(bool writable)
     {
-        return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(FolderPath[..FolderPath.LastIndexOfAny(Slashes)], writable);
+        string parent_path = FolderPath[..FolderPath.LastIndexOfAny(Slashes)];
+        try
+        {
+            return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(parent_path, writable);
+        }
+        catch
+        {
+            TakePermission(parent_path);
+            return RegistryKey.OpenBaseKey(TopLevel, RegistryView.Default).OpenSubKey(parent_path, writable);
+        }
     }
 
     private object? GetValue()
