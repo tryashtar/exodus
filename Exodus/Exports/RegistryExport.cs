@@ -9,6 +9,7 @@ public class RegistryExport
     public readonly HashSet<RegistryPath> Copy;
     public readonly HashSet<RegistryPath> Delete;
     public readonly FileAssociationExport Associations;
+    public readonly PathVarExport Path;
     public void Finalize()
     {
         Console.WriteLine("Finalizing registry...");
@@ -38,6 +39,7 @@ public class RegistryExport
     {
         Console.WriteLine("Importing registry...");
         Associations.Perform();
+        Path.Perform();
         foreach (var item in Delete)
         {
             item.Delete();
@@ -46,6 +48,33 @@ public class RegistryExport
         {
             item.Key.SetValue(item.Value);
         }
+    }
+}
+
+[YamlParser.OptionalFields]
+public class PathVarExport
+{
+    public readonly ScopedPathVarExport System;
+    public readonly ScopedPathVarExport User;
+    public void Perform()
+    {
+        System?.Perform(new RegistryPath(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "Path"));
+        User?.Perform(new RegistryPath(RegistryHive.LocalMachine, @"Environment", "Path"));
+    }
+}
+
+[YamlParser.OptionalFields(true)]
+public class ScopedPathVarExport
+{
+    public readonly List<string> Append;
+    public void Perform(RegistryPath path)
+    {
+        var value = (string)path.GetAsValue().Value;
+        foreach (var item in Append)
+        {
+            value += item + ';';
+        }
+        path.SetValue(new RegistryValue(value, RegistryValueKind.ExpandString));
     }
 }
 
