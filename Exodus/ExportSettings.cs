@@ -47,6 +47,7 @@ public class CommandsExport
             var result = new ProcessWrapper(folder, name, args, stream, null).Result;
             if (result.ExitCode != 0)
                 Console.WriteLine($"    Error {result.ExitCode}: {result.Error}");
+            stream?.Flush();
             Import.Add(Export[i].Import.Replace("@@@", file));
         }
         Export.Clear();

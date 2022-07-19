@@ -61,13 +61,28 @@ public class FilesExport
         foreach (var item in Extract)
         {
             var dest = Environment.ExpandEnvironmentVariables(item.To);
-            if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
-                IOUtils.WipeDirectory(dest);
-            var entry = zip.GetEntry(item.From);
-            if (entry != null)
-                entry.ExtractToFile(dest, true);
-            else
-                zip.ExtractDirectoryEntry(item.From, dest, true);
+            Console.WriteLine("   " + dest);
+            var entry = zip.GetEntry(item.From.Replace('/','\\'));
+            bool success = false;
+            while (!success)
+            {
+                try
+                {
+                    if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
+                        IOUtils.WipeDirectory(dest);
+                    if (entry != null)
+                        entry.ExtractToFile(dest, true);
+                    else
+                        zip.ExtractDirectoryEntry(item.From, dest, true);
+                    success = true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("    Error: " + ex.ToString());
+                    Console.WriteLine("    Redo?");
+                    success = Console.ReadLine().ToLower() == "n";
+                }
+            }
         }
     }
 }
