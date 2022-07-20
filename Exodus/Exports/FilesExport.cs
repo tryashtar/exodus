@@ -1,5 +1,6 @@
 ﻿using System.IO.Compression;
 using TryashtarUtils.Utility;
+using YamlDotNet.RepresentationModel;
 
 namespace Exodus;
 
@@ -91,4 +92,38 @@ public enum FolderWrite
 {
     Replace,
     Merge
+}
+
+public record FileMove(string From, string To, FolderWrite Method)
+{
+    [YamlParser.Parser]
+    private FileMove(YamlNode node) : this(default, default, default) // cringe
+    {
+        if (node is YamlScalarNode simple)
+        {
+            this.From = simple.Value;
+            this.To = simple.Value;
+            this.Method = FolderWrite.Replace;
+        }
+        else
+        {
+            var map = (YamlMappingNode)node;
+            var both = map.TryGet("file");
+            if (both != null)
+            {
+                this.From = YamlParser.Parse<string>(both);
+                this.To = this.From;
+            }
+            else
+            {
+                this.From = YamlParser.Parse<string>(map["from"]);
+                this.To = YamlParser.Parse<string>(map["to"]);
+            }
+            var method = map.TryGet("method");
+            if (method == null)
+                this.Method = FolderWrite.Replace;
+            else
+                this.Method = YamlParser.Parse<FolderWrite>(method);
+        }
+    }
 }
