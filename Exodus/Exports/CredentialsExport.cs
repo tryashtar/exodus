@@ -25,7 +25,7 @@ public class CredentialsExport
         Console.WriteLine("Importing credentials...");
         foreach (var item in Add)
         {
-            CredentialManager.SaveCredentials(item.Target, new System.Net.NetworkCredential(item.Username, Encoding.Unicode.GetString(Convert.FromBase64String(item.Password))));
+            CredentialManager.SaveCredentials(item.Target, new System.Net.NetworkCredential(item.Username, Encoding.Unicode.GetString(Convert.FromBase64String(item.Password))), AllowNullPassword: true);
         }
         foreach (var item in Delete)
         {

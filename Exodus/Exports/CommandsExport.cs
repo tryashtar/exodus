@@ -1,23 +1,25 @@
-﻿namespace Exodus;
+﻿using YamlDotNet.RepresentationModel;
+
+namespace Exodus;
 
 [YamlParser.OptionalFields(true)]
 public class CommandsExport
 {
-    public readonly List<ExportCommand> Export;
-    public readonly List<string> Import;
+    public readonly List<CommandPair> Export;
+    public readonly List<CommandArgs> Import;
     public void Finalize(string folder)
     {
         Console.WriteLine("Running commands...");
         for (int i = 0; i < Export.Count; i++)
         {
             string file = i + ".txt";
-            var (name, args) = Split(Export[i].Export);
-            (args, TextWriter stream) = args.Contains("@@@") ? (args.Replace("@@@", file), null) : (args, File.CreateText(Path.Combine(folder, file)));
-            var result = new ProcessWrapper(folder, name, args, stream, null).Result;
+            var (name, args) = (Export[i].Export.Name, Export[i].Export.Args);
+            (args, TextWriter stream) = args.Contains("@@@") ? (args.Replace("@@@", file), Console.Out) : (args, File.CreateText(Path.Combine(folder, file)));
+            var result = new ProcessWrapper(folder, name, args, stream, Console.Out).Result;
             if (result.ExitCode != 0)
-                Console.WriteLine($"    Error {result.ExitCode}: {result.Error}");
+                Console.WriteLine($"    Error {result.ExitCode}");
             stream?.Flush();
-            Import.Add(Export[i].Import.Replace("@@@", file));
+            Import.Add(new CommandArgs(Export[i].Import.Name, Export[i].Import.Args.Replace("@@@", file)));
         }
         Export.Clear();
     }
@@ -26,25 +28,46 @@ public class CommandsExport
         Console.WriteLine("Running commands...");
         foreach (var import in Import)
         {
-            var (name, args) = Split(import);
-            var result = ProcessWrapper.RunCommand(name, args);
+            var result = new ProcessWrapper(Directory.GetCurrentDirectory(), import.Name, import.Args, Console.Out, Console.Out).Result;
             if (result.ExitCode != 0)
-                Console.WriteLine($"    Error {result.ExitCode}: {result.Error}");
+                Console.WriteLine($"    Error {result.ExitCode}");
         }
-    }
-    private (string name, string args) Split(string command)
-    {
-        int index = command.IndexOf(' ');
-        return (command[..index], command[(index + 1)..]);
     }
 }
 
-public record ExportCommand(string Export, string Import)
+public record CommandPair(CommandArgs Export, CommandArgs Import)
 {
     [YamlParser.Parser]
-    public ExportCommand(string[] list) : this(default, default)
+    public CommandPair(CommandArgs[] list) : this(default, default)
     {
         this.Export = list[0];
         this.Import = list[1];
+    }
+}
+
+public class CommandArgs
+{
+    public readonly string Name;
+    public readonly string Args;
+    [YamlParser.Parser]
+    private CommandArgs(YamlNode node)
+    {
+        if (node is YamlScalarNode simple)
+        {
+            int index = simple.Value.IndexOf(' ');
+            Name = simple.Value[..index];
+            Args = simple.Value[(index + 1)..];
+        }
+        else
+        {
+            var map = (YamlMappingNode)node;
+            this.Name = YamlParser.Parse<string>(map["name"]);
+            this.Args = YamlParser.Parse<string>(map["args"]);
+        }
+    }
+    public CommandArgs(string name, string args)
+    {
+        Name = name;
+        Args = args;
     }
 }

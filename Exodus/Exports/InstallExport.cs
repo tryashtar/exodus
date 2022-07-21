@@ -77,13 +77,7 @@ public class WingetExport
         var packages = WingetWrapper.InstalledPackages().ToHashSet();
         foreach (var item in Uninstall)
         {
-            if (packages.Contains(item))
-            {
-                Console.WriteLine("    Removing " + item);
-                WingetWrapper.Uninstall(item);
-            }
-            else
-                Console.WriteLine($"    Not found: {item}");
+            WingetWrapper.Uninstall(item);
         }
         foreach (var item in Install)
         {
