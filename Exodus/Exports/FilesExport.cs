@@ -14,29 +14,17 @@ public class FilesExport
     public void Finalize(string zip_path)
     {
         Console.WriteLine("Zipping files...");
-        Directory.CreateDirectory(Path.GetDirectoryName(zip_path));
         using var stream = File.Create(zip_path);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
         foreach (var item in Copy)
         {
             var exp = Environment.ExpandEnvironmentVariables(item.From);
             Console.WriteLine("   " + exp);
-            bool success = false;
-            while (!success)
+            Redoable.Do(() =>
             {
-                try
-                {
-                    zip.CreateEntryFromAny(exp, exp.Replace(':', '_'));
-                    Extract.Add(new FileMove(exp.Replace('\\', '/').Replace(':', '_'), item.To, item.Method));
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("    Error: " + ex.ToString());
-                    Console.WriteLine("    Redo?");
-                    success = Console.ReadLine().ToLower() == "n";
-                }
-            }
+                zip.CreateEntryFromAny(exp, exp.Replace(':', '_'));
+                Extract.Add(new FileMove(exp.Replace('\\', '/').Replace(':', '_'), item.To, item.Method));
+            });
         }
         Copy.Clear();
     }
@@ -67,7 +55,7 @@ public class FilesExport
             bool success = false;
             while (!success)
             {
-                try
+                Redoable.Do(() =>
                 {
                     if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
                         IOUtils.WipeDirectory(dest);
@@ -75,14 +63,7 @@ public class FilesExport
                         entry.ExtractToFile(dest, true);
                     else
                         zip.ExtractDirectoryEntry(item.From, dest, true);
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("    Error: " + ex.ToString());
-                    Console.WriteLine("    Redo?");
-                    success = Console.ReadLine().ToLower() == "n";
-                }
+                });
             }
         }
     }

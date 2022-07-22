@@ -13,11 +13,12 @@ public class ExportSettings
     public readonly CommandsExport Commands;
     public void CreateExport(string folder)
     {
+        Directory.CreateDirectory(folder);
         Credentials.Finalize();
         Installs.Finalize();
         Registry.Finalize();
-        Files.Finalize(Path.Combine(folder, "files.zip"));
         Commands.Finalize(folder);
+        Files.Finalize(Path.Combine(folder, "files.zip"));
         Console.WriteLine("Writing config...");
         YamlHelper.SaveToFile(YamlParser.Serialize(this), Path.Combine(folder, "import.yaml"));
     }
@@ -26,8 +27,8 @@ public class ExportSettings
         Credentials.Perform();
         Installs.Perform();
         Registry.Perform();
-        Files.Perform("files.zip");
         Commands.Perform();
+        Files.Perform("files.zip");
     }
 }
 

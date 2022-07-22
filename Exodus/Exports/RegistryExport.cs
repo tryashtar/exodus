@@ -15,6 +15,7 @@ public class RegistryExport
         Console.WriteLine("Finalizing registry...");
         foreach (var item in Copy)
         {
+            Console.WriteLine("    " + item);
             FinalizeSingle(item);
         }
         Copy.Clear();
@@ -42,11 +43,13 @@ public class RegistryExport
         Path.Perform();
         foreach (var item in Delete)
         {
-            item.Delete();
+            Console.WriteLine("    " + item);
+            Redoable.Do(() => item.Delete());
         }
         foreach (var item in Set)
         {
-            item.Key.SetValue(item.Value);
+            Console.WriteLine("    " + item);
+            Redoable.Do(() => item.Key.SetValue(item.Value));
         }
     }
 }
@@ -72,9 +75,13 @@ public class ScopedPathVarExport
         var value = ((string)path.GetAsValue().Value).Split(';').ToList();
         foreach (var item in Append)
         {
+            Console.WriteLine("    " + item);
             value.Add(item);
         }
-        path.SetValue(new RegistryValue(String.Join(';', value.Distinct()) + ';', RegistryValueKind.ExpandString));
+        Redoable.Do(() =>
+        {
+            path.SetValue(new RegistryValue(String.Join(';', value.Distinct()) + ';', RegistryValueKind.ExpandString));
+        });
     }
 }
 
@@ -96,6 +103,7 @@ public class FileAssociationExport
         foreach (var extension in Copy)
         {
             string ext_fix = FixExtension(extension);
+            Console.WriteLine("    " + ext_fix);
             var id = new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "ProgId").GetAsValue();
             if (id == null)
                 Delete.Add(ext_fix);
@@ -128,27 +136,42 @@ public class FileAssociationExport
         foreach (var ext in Delete)
         {
             string ext_fix = FixExtension(ext);
-            new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes", ext_fix).Delete();
-            new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts", ext_fix).Delete();
+            Console.WriteLine("    " + ext_fix);
+            Redoable.Do(() =>
+            {
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes", ext_fix).Delete();
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts", ext_fix).Delete();
+            });
         }
         foreach (var assoc in Set)
         {
             // we can't do this in finalize phase because the hash part needs to run on the destination machine
             if (assoc.Desc != null)
             {
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", null).SetValue(new RegistryValue(assoc.Desc));
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", "FriendlyTypeName").SetValue(new RegistryValue(assoc.Desc));
+                Console.WriteLine("    " + assoc.Desc);
+                Redoable.Do(() =>
+                {
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", null).SetValue(new RegistryValue(assoc.Desc));
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}", "FriendlyTypeName").SetValue(new RegistryValue(assoc.Desc));
+                });
             }
-            new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}\shell\open\command", null).SetValue(new RegistryValue(assoc.Path));
+            Redoable.Do(() =>
+            {
+                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{assoc.Id}\shell\open\command", null).SetValue(new RegistryValue(assoc.Path));
+            });
             foreach (var ext in assoc.Extensions)
             {
                 string ext_fix = FixExtension(ext);
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", null).SetValue(new RegistryValue(assoc.Id));
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}\OpenWithProgids", null).Delete();
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}\OpenWithList", null).Delete();
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", null).Delete();
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "ProgId").SetValue(new RegistryValue(assoc.Id));
-                new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "Hash").SetValue(new RegistryValue(StupidFileExtensionRegistryHack.GetHash(assoc.Id, ext_fix)));
+                Console.WriteLine("    " + ext_fix);
+                Redoable.Do(() =>
+                {
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}", null).SetValue(new RegistryValue(assoc.Id));
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}\OpenWithProgids", null).Delete();
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Classes\{ext_fix}\OpenWithList", null).Delete();
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", null).Delete();
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "ProgId").SetValue(new RegistryValue(assoc.Id));
+                    new RegistryPath(RegistryHive.CurrentUser, @$"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext_fix}\UserChoice", "Hash").SetValue(new RegistryValue(StupidFileExtensionRegistryHack.GetHash(assoc.Id, ext_fix)));
+                });
             }
         }
     }

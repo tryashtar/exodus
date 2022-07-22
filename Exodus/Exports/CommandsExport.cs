@@ -15,9 +15,12 @@ public class CommandsExport
             string file = i + ".txt";
             var (name, args) = (Export[i].Export.Name, Export[i].Export.Args);
             (args, TextWriter stream) = args.Contains("@@@") ? (args.Replace("@@@", file), Console.Out) : (args, File.CreateText(Path.Combine(folder, file)));
-            var result = new ProcessWrapper(folder, name, args, stream, Console.Out).Result;
-            if (result.ExitCode != 0)
-                Console.WriteLine($"    Error {result.ExitCode}");
+            Redoable.Do(() =>
+            {
+                var result = new ProcessWrapper(folder, name, args, stream, Console.Out).Result;
+                if (result.ExitCode != 0)
+                    throw new ApplicationException(result.Error);
+            });
             stream?.Flush();
             Import.Add(new CommandArgs(Export[i].Import.Name, Export[i].Import.Args.Replace("@@@", file)));
         }
@@ -28,9 +31,12 @@ public class CommandsExport
         Console.WriteLine("Running commands...");
         foreach (var import in Import)
         {
-            var result = new ProcessWrapper(Directory.GetCurrentDirectory(), import.Name, import.Args, Console.Out, Console.Out).Result;
-            if (result.ExitCode != 0)
-                Console.WriteLine($"    Error {result.ExitCode}");
+            Redoable.Do(() =>
+            {
+                var result = new ProcessWrapper(Directory.GetCurrentDirectory(), import.Name, import.Args, Console.Out, Console.Out).Result;
+                if (result.ExitCode != 0)
+                    throw new ApplicationException(result.Error);
+            });
         }
     }
 }
@@ -61,7 +67,7 @@ public class CommandArgs
         else
         {
             var map = (YamlMappingNode)node;
-            this.Name = YamlParser.Parse<string>(map["name"]);
+            this.Name = Environment.ExpandEnvironmentVariables(YamlParser.Parse<string>(map["name"]));
             this.Args = YamlParser.Parse<string>(map["args"]);
         }
     }
