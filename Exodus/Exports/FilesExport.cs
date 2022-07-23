@@ -20,11 +20,24 @@ public class FilesExport
         {
             var exp = Environment.ExpandEnvironmentVariables(item.From);
             Console.WriteLine("   " + exp);
+            string safe = exp.Replace(':', '_');
+            bool ShouldExclude(string path)
+            {
+                foreach (var ex in item.Exclude)
+                {
+                    if (path == Path.Combine(exp, ex))
+                        return true;
+                }
+                return false;
+            }
             Redoable.Do(() =>
             {
-                zip.CreateEntryFromAny(exp, exp.Replace(':', '_'));
-                Extract.Add(new FileMove(exp.Replace('\\', '/').Replace(':', '_'), item.To, item.Method));
+                if (Directory.Exists(exp))
+                    zip.CreateEntryFromDirectory(exp, safe, predicate: x => !ShouldExclude(x));
+                else
+                    zip.CreateEntryFromFile(exp, safe);
             });
+            Extract.Add(new FileMove(safe.Replace('\\', '/'), item.To, item.Method));
         }
         Copy.Clear();
     }
@@ -33,16 +46,22 @@ public class FilesExport
         foreach (var item in Delete)
         {
             var exp = Environment.ExpandEnvironmentVariables(item);
-            if (Directory.Exists(exp))
-                Directory.Delete(exp, true);
-            else if (File.Exists(exp))
-                File.Delete(exp);
+            Redoable.Do(() =>
+            {
+                if (Directory.Exists(exp))
+                    Directory.Delete(exp, true);
+                else if (File.Exists(exp))
+                    File.Delete(exp);
+            });
         }
         foreach (var item in Wipe)
         {
             var exp = Environment.ExpandEnvironmentVariables(item);
-            if (Directory.Exists(exp))
-                IOUtils.WipeDirectory(exp);
+            Redoable.Do(() =>
+            {
+                if (Directory.Exists(exp))
+                    IOUtils.WipeDirectory(exp);
+            });
         }
         Console.WriteLine("Extracting zip...");
         using var stream = File.OpenRead(zip_path);
@@ -51,20 +70,16 @@ public class FilesExport
         {
             var dest = Environment.ExpandEnvironmentVariables(item.To);
             Console.WriteLine("   " + dest);
-            var entry = zip.GetEntry(item.From.Replace('/','\\'));
-            bool success = false;
-            while (!success)
+            var entry = zip.GetEntry(item.From.Replace('/', '\\'));
+            Redoable.Do(() =>
             {
-                Redoable.Do(() =>
-                {
-                    if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
-                        IOUtils.WipeDirectory(dest);
-                    if (entry != null)
-                        entry.ExtractToFile(dest, true);
-                    else
-                        zip.ExtractDirectoryEntry(item.From, dest, true);
-                });
-            }
+                if (item.Method == FolderWrite.Replace && Directory.Exists(dest))
+                    IOUtils.WipeDirectory(dest);
+                if (entry != null)
+                    entry.ExtractToFile(dest, true);
+                else
+                    zip.ExtractDirectoryEntry(item.From, dest, true);
+            });
         }
     }
 }
@@ -75,10 +90,20 @@ public enum FolderWrite
     Merge
 }
 
-public record FileMove(string From, string To, FolderWrite Method)
+public class FileMove
 {
+    public readonly string From;
+    public readonly string To;
+    public readonly FolderWrite Method = FolderWrite.Replace;
+    public readonly string[] Exclude = Array.Empty<string>();
+    public FileMove(string from, string to, FolderWrite method)
+    {
+        From = from;
+        To = to;
+        Method = method;
+    }
     [YamlParser.Parser]
-    private FileMove(YamlNode node) : this(default, default, default) // cringe
+    private FileMove(YamlNode node)
     {
         if (node is YamlScalarNode simple)
         {
@@ -101,10 +126,11 @@ public record FileMove(string From, string To, FolderWrite Method)
                 this.To = YamlParser.Parse<string>(map["to"]);
             }
             var method = map.TryGet("method");
-            if (method == null)
-                this.Method = FolderWrite.Replace;
-            else
+            if (method != null)
                 this.Method = YamlParser.Parse<FolderWrite>(method);
+            var exclude = map.TryGet("exclude");
+            if (exclude != null)
+                this.Exclude = YamlParser.Parse<string[]>(exclude);
         }
     }
 }

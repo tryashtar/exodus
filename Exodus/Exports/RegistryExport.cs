@@ -62,7 +62,7 @@ public class PathVarExport
     public void Perform()
     {
         System?.Perform(new RegistryPath(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "Path"));
-        User?.Perform(new RegistryPath(RegistryHive.LocalMachine, @"Environment", "Path"));
+        User?.Perform(new RegistryPath(RegistryHive.CurrentUser, @"Environment", "Path"));
     }
 }
 

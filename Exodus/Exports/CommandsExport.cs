@@ -18,7 +18,7 @@ public class CommandsExport
             Redoable.Do(() =>
             {
                 var result = new ProcessWrapper(folder, name, args, stream, Console.Out).Result;
-                if (result.ExitCode != 0)
+                if (!Export[i].Export.FailOk && result.ExitCode != 0)
                     throw new ApplicationException(result.Error);
             });
             stream?.Flush();
@@ -34,7 +34,7 @@ public class CommandsExport
             Redoable.Do(() =>
             {
                 var result = new ProcessWrapper(Directory.GetCurrentDirectory(), import.Name, import.Args, Console.Out, Console.Out).Result;
-                if (result.ExitCode != 0)
+                if (!import.FailOk && result.ExitCode != 0)
                     throw new ApplicationException(result.Error);
             });
         }
@@ -55,6 +55,7 @@ public class CommandArgs
 {
     public readonly string Name;
     public readonly string Args;
+    public readonly bool FailOk = false;
     [YamlParser.Parser]
     private CommandArgs(YamlNode node)
     {
@@ -69,6 +70,8 @@ public class CommandArgs
             var map = (YamlMappingNode)node;
             this.Name = Environment.ExpandEnvironmentVariables(YamlParser.Parse<string>(map["name"]));
             this.Args = YamlParser.Parse<string>(map["args"]);
+            if (map.Children.TryGetValue("fail_ok", out var fail_ok))
+                this.FailOk = YamlParser.Parse<bool>(fail_ok);
         }
     }
     public CommandArgs(string name, string args)

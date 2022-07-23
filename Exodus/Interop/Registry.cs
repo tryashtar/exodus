@@ -143,6 +143,8 @@ public class RegistryPath
         var folder = GetAsFolder();
         foreach (var sub in folder.GetValueNames())
         {
+            if (String.IsNullOrEmpty(sub))
+                continue;
             yield return new RegistryPath(this.TopLevel, this.FolderPath, sub);
         }
         foreach (var sub in folder.GetSubKeyNames())
