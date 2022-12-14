@@ -3,17 +3,17 @@
 namespace Exodus;
 
 [YamlParser.OptionalFields(true)]
-public class InstallExport
+public class InstallExport : IExport
 {
     public readonly WingetExport Winget;
     public List<DownloadInstall> Downloads;
     private static readonly HttpClient WebClient = new();
-    public void Finalize()
+    public void Finalize(string folder)
     {
         Winget.Finalize();
     }
 
-    public void Perform()
+    public void Perform(string folder)
     {
         Winget.Perform();
         if (Downloads.Count > 0)
@@ -29,10 +29,10 @@ public class InstallExport
             }
             if (download.ZipFileName != null)
             {
-                string folder = Path.Combine(Path.GetTempPath(), Path.GetFileNameWithoutExtension(path));
+                string temp_folder = Path.Combine(Path.GetTempPath(), Path.GetFileNameWithoutExtension(path));
                 using var zip = ZipFile.OpenRead(path);
-                zip.ExtractToDirectory(folder);
-                path = Path.Combine(folder, download.ZipFileName);
+                zip.ExtractToDirectory(temp_folder);
+                path = Path.Combine(temp_folder, download.ZipFileName);
             }
             var result = ProcessWrapper.RunCommand(path, download.Args);
             if (result.ExitCode != 0)
@@ -77,6 +77,7 @@ public class WingetExport
         var packages = WingetWrapper.InstalledPackages().ToHashSet();
         foreach (var item in Uninstall)
         {
+            Console.WriteLine("    Uninstalling " + item);
             WingetWrapper.Uninstall(item);
         }
         foreach (var item in Install)

@@ -4,12 +4,12 @@ using System.Text;
 namespace Exodus;
 
 [YamlParser.OptionalFields(true)]
-public class CredentialsExport
+public class CredentialsExport : IExport
 {
     public readonly HashSet<string> Copy;
     public readonly HashSet<string> Delete;
     public readonly List<Credentials> Add;
-    public void Finalize()
+    public void Finalize(string folder)
     {
         Console.WriteLine("Finalizing credentials...");
         foreach (var item in Copy)
@@ -20,7 +20,7 @@ public class CredentialsExport
         }
         Copy.Clear();
     }
-    public void Perform()
+    public void Perform(string folder)
     {
         Console.WriteLine("Importing credentials...");
         foreach (var item in Add)

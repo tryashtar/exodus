@@ -3,14 +3,14 @@
 namespace Exodus;
 
 [YamlParser.OptionalFields(true)]
-public class RegistryExport
+public class RegistryExport : IExport
 {
     public readonly Dictionary<RegistryPath, RegistryValue> Set;
     public readonly HashSet<RegistryPath> Copy;
     public readonly HashSet<RegistryPath> Delete;
     public readonly FileAssociationExport Associations;
     public readonly PathVarExport Path;
-    public void Finalize()
+    public void Finalize(string folder)
     {
         Console.WriteLine("Finalizing registry...");
         foreach (var item in Copy)
@@ -36,7 +36,7 @@ public class RegistryExport
         if (!item.Exists())
             Delete.Add(item);
     }
-    public void Perform()
+    public void Perform(string folder)
     {
         Console.WriteLine("Importing registry...");
         Associations.Perform();
@@ -48,7 +48,7 @@ public class RegistryExport
         }
         foreach (var item in Set)
         {
-            Console.WriteLine("    " + item);
+            Console.WriteLine("    " + item.Key + ": " + item.Value.Value);
             Redoable.Do(() => item.Key.SetValue(item.Value));
         }
     }

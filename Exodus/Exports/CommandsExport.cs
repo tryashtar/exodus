@@ -1,40 +1,44 @@
-﻿using YamlDotNet.RepresentationModel;
+﻿using TryashtarUtils.Utility;
+using YamlDotNet.RepresentationModel;
 
 namespace Exodus;
 
 [YamlParser.OptionalFields(true)]
-public class CommandsExport
+public class CommandsExport : IExport
 {
     public readonly List<CommandPair> Export;
-    public readonly List<CommandArgs> Import;
+    public readonly List<ImportCommand> Import;
     public void Finalize(string folder)
     {
         Console.WriteLine("Running commands...");
-        for (int i = 0; i < Export.Count; i++)
+        foreach (var pair in Export)
         {
-            string file = i + ".txt";
-            var (name, args) = (Export[i].Export.Name, Export[i].Export.Args);
-            (args, TextWriter stream) = args.Contains("@@@") ? (args.Replace("@@@", file), Console.Out) : (args, File.CreateText(Path.Combine(folder, file)));
+            string file = IOUtils.MakeFilesafe((pair.Export.Name + " " + pair.Export.Args).GetHashCode() + ".txt");
+            var (name, args) = (pair.Export.Name, pair.Export.Args);
+            (args, TextWriter stream) = args.Contains("@@@") ? (args.Replace("@@@", Path.GetFullPath(Path.Combine(folder, file))), Console.Out) : (args, File.CreateText(Path.Combine(folder, file)));
+            Console.WriteLine(name + " " + args);
             Redoable.Do(() =>
             {
                 var result = new ProcessWrapper(folder, name, args, stream, Console.Out).Result;
-                if (!Export[i].Export.FailOk && result.ExitCode != 0)
+                if (!pair.Export.FailOk && result.ExitCode != 0)
                     throw new ApplicationException(result.Error);
             });
             stream?.Flush();
-            Import.Add(new CommandArgs(Export[i].Import.Name, Export[i].Import.Args.Replace("@@@", file)));
+            Import.Add(new ImportCommand(pair.Import, file));
         }
         Export.Clear();
     }
-    public void Perform()
+    public void Perform(string folder)
     {
         Console.WriteLine("Running commands...");
         foreach (var import in Import)
         {
+            string args = import.Command.Args.Replace("@@@", Path.GetFullPath(Path.Combine(folder, import.File)));
+            Console.WriteLine(import.Command.Name + " " + args);
             Redoable.Do(() =>
             {
-                var result = new ProcessWrapper(Directory.GetCurrentDirectory(), import.Name, import.Args, Console.Out, Console.Out).Result;
-                if (!import.FailOk && result.ExitCode != 0)
+                var result = new ProcessWrapper(folder, import.Command.Name, args, Console.Out, Console.Out).Result;
+                if (!import.Command.FailOk && result.ExitCode != 0)
                     throw new ApplicationException(result.Error);
             });
         }
@@ -51,13 +55,30 @@ public record CommandPair(CommandArgs Export, CommandArgs Import)
     }
 }
 
+public record ImportCommand(CommandArgs Command, string File)
+{
+    [YamlParser.Parser]
+    public ImportCommand(YamlNode node) : this(default, default)
+    {
+        this.File = "";
+        if (node is YamlMappingNode map && map.Children.TryGetValue("command", out var c))
+        {
+            this.Command = new CommandArgs(c);
+            if (map.Children.TryGetValue("file", out var f))
+                this.File = f.String();
+        }
+        else
+            this.Command = new CommandArgs(node);
+    }
+}
+
 public class CommandArgs
 {
     public readonly string Name;
     public readonly string Args;
     public readonly bool FailOk = false;
     [YamlParser.Parser]
-    private CommandArgs(YamlNode node)
+    public CommandArgs(YamlNode node)
     {
         if (node is YamlScalarNode simple)
         {

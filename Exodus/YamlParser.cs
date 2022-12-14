@@ -62,7 +62,12 @@ public static class YamlParser
             return Serialize(GetVal(root, obj));
         var serializer = FindSerializer(type);
         if (serializer != null)
-            return Serialize(GetVal(serializer, obj));
+        {
+            var serialized = GetVal(serializer, obj);
+            if (serialized is YamlNode sn)
+                return sn;
+            return Serialize(serialized);
+        }
         // member-wise object
         var result = new YamlMappingNode();
         foreach (MemberInfo member in type.GetFields(PublicBinding).Cast<MemberInfo>().Concat(type.GetProperties(PublicBinding)))

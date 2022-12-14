@@ -5,16 +5,16 @@ using YamlDotNet.RepresentationModel;
 namespace Exodus;
 
 [YamlParser.OptionalFields(true)]
-public class FilesExport
+public class FilesExport : IExport
 {
     public readonly List<FileMove> Copy;
     public readonly HashSet<string> Delete;
     public readonly HashSet<string> Wipe;
     public readonly List<FileMove> Extract;
-    public void Finalize(string zip_path)
+    public void Finalize(string folder)
     {
         Console.WriteLine("Zipping files...");
-        using var stream = File.Create(zip_path);
+        using var stream = new FileStream(Path.Combine(folder, "files.zip"), FileMode.OpenOrCreate, FileAccess.Write);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
         foreach (var item in Copy)
         {
@@ -41,7 +41,7 @@ public class FilesExport
         }
         Copy.Clear();
     }
-    public void Perform(string zip_path)
+    public void Perform(string folder)
     {
         foreach (var item in Delete)
         {
@@ -64,7 +64,7 @@ public class FilesExport
             });
         }
         Console.WriteLine("Extracting zip...");
-        using var stream = File.OpenRead(zip_path);
+        using var stream = File.OpenRead(Path.Combine(folder, "files.zip"));
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         foreach (var item in Extract)
         {
